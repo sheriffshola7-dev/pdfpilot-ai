@@ -100,7 +100,13 @@ export default function Home() {
         form.append("action", tool === "Chat with PDF" ? "chat" : "analyze"); form.append("file", files[0]);
         if (tool === "Chat with PDF") form.append("question", chatQuestion);
       }
-      const response = await fetch("/api/process", { method: "POST", body: form });
+      const response = await fetch("/api/process", { method: "POST", body: form, signal: AbortSignal.timeout(35000) });
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(response.ok
+          ? "The server returned an unexpected response. Please try again."
+          : "The PDF service is temporarily unavailable. Please try again shortly.");
+      }
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Processing failed.");
       setResult(data);
