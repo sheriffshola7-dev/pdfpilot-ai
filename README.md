@@ -14,7 +14,7 @@
 - Export of results as JSON and Markdown reports.
 - Light/dark mode toggle with the choice saved on the current device.
 - Local browser-based processing history, activity list, and saved insights (result metadata only; not cloud-synced).
-- Uploaded PDF contents are processed in memory for the request and are not intentionally written to a document library.
+- Uploaded PDF files are processed for the request and are not intentionally written to a document library. When `OPENAI_API_KEY` is configured, selected extracted text is sent to OpenAI for AI-assisted results; do not upload confidential or sensitive documents until provider/data-handling requirements have been reviewed.
 - Server-side limits: 20 MB per PDF, 120,000 extracted characters per file, and 1,500 characters per question. Truncated documents show a warning.
 
 ## Configure optional AI
