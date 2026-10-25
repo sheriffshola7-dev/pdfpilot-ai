@@ -97,7 +97,7 @@ export default function Home() {
     })().catch(() => { if (!cancelled) setNotice("Could not load your cloud workspace. Please refresh and try again."); });
     return () => { cancelled = true; };
   }, [supabase, user?.id]);
-  function persistLocal(  function persistLocal(key: string, value: unknown) {
+  function persistLocal(key: string, value: unknown) {
     try { localStorage.setItem(key, JSON.stringify(value)); return true; }
     catch { setNotice("Browser storage is full or unavailable. This result is still visible, but may not be saved after you leave this page."); return false; }
   }
