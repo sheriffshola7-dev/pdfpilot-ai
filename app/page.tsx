@@ -42,15 +42,15 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [result, setResult] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
-  const [savedInsights, setSavedInsights] = useState<any[]>([]);
+  const [result, setResult] = useState<Record<string, any> | null>(null);
+  const [history, setHistory] = useState<Record<string, any>[]>([]);
+  const [savedInsights, setSavedInsights] = useState<Record<string, any>[]>([]);
   useEffect(() => { try { const storedHistory = JSON.parse(localStorage.getItem("pdfpilot-history") || "[]"); const storedInsights = JSON.parse(localStorage.getItem("pdfpilot-insights") || "[]"); setHistory(Array.isArray(storedHistory) ? storedHistory : []); setSavedInsights(Array.isArray(storedInsights) ? storedInsights : []); } catch { setHistory([]); setSavedInsights([]); } }, []);
   function persistLocal(key: string, value: unknown) {
     try { localStorage.setItem(key, JSON.stringify(value)); return true; }
     catch { setNotice("Browser storage is full or unavailable. This result is still visible, but may not be saved after you leave this page."); return false; }
   }
-  function saveResultToHistory(data: any, toolName: ToolKey) {
+  function saveResultToHistory(data: Record<string, any>, toolName: ToolKey) {
     const entry = { id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`, tool: toolName, title: data.document?.name || data.documents?.map((d: {name:string})=>d.name).join(" ↔ ") || toolName, createdAt: new Date().toISOString(), result: data };
     setHistory(old => { const next=[entry,...old].slice(0,30); persistLocal("pdfpilot-history", next); return next; });
   }
