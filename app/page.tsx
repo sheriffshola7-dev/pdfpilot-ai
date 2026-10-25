@@ -28,6 +28,7 @@ export default function Home() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [active, setActive] = useState("Overview");
+  const [workspaceRestored, setWorkspaceRestored] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   useEffect(() => {
     let saved: string | null = null;
@@ -67,6 +68,25 @@ export default function Home() {
     });
     return () => { mounted = false; listener.subscription.unsubscribe(); };
   }, [supabase]);
+  useEffect(() => {
+    try {
+      const savedWorkspace = JSON.parse(localStorage.getItem("pdfpilot-workspace") || "null");
+      if (savedWorkspace && typeof savedWorkspace === "object") {
+        if (typeof savedWorkspace.active === "string") setActive(savedWorkspace.active);
+        if (["Analyze PDF", "Compare documents", "Chat with PDF"].includes(savedWorkspace.tool)) setTool(savedWorkspace.tool as ToolKey);
+        if (savedWorkspace.result && typeof savedWorkspace.result === "object") setResult(savedWorkspace.result);
+        if (typeof savedWorkspace.query === "string") setQuery(savedWorkspace.query);
+        if (typeof savedWorkspace.chatQuestion === "string") setChatQuestion(savedWorkspace.chatQuestion);
+        if (savedWorkspace.tool && !savedWorkspace.result) setNotice("Your previous workspace was restored. For privacy, choose the PDF again because uploaded files are not kept after refresh.");
+      }
+    } catch { /* Ignore unavailable or malformed workspace state. */ }
+    setWorkspaceRestored(true);
+  }, []);
+  useEffect(() => {
+    if (!workspaceRestored) return;
+    try { localStorage.setItem("pdfpilot-workspace", JSON.stringify({ active, tool, result, query, chatQuestion })); }
+    catch { /* Workspace remains usable this session if storage is unavailable. */ }
+  }, [workspaceRestored, active, tool, result, query, chatQuestion]);
   useEffect(() => {
     try {
       const storedHistory = JSON.parse(localStorage.getItem("pdfpilot-history") || "[]");
@@ -278,7 +298,7 @@ export default function Home() {
         <div className="sidebar-bottom">
           <div className="upgrade-card"><div className="upgrade-icon"><Zap size={17}/></div><strong>Unlock more with Pro</strong><p>Get deeper insights and analyze more documents.</p><button onClick={() => setNotice("Plans and billing will be available in a later release.")}>Explore plans <ArrowRight size={14}/></button><div className="upgrade-orbit orbit-one"/><div className="upgrade-orbit orbit-two"/></div>
           <button className="nav-item" onClick={() => {setActive("Settings"); setTool(null)}}><Settings2 size={18}/><span>Settings</span></button>
-          <button className="nav-item" onClick={() => setNotice("Help center is coming soon.")}><CircleHelp size={18}/><span>Help & support</span></button>
+          <button className={"nav-item " + (active === "Help & support" ? "nav-active" : "")} onClick={() => {setActive("Help & support");setTool(null);setMobileMenu(false)}}><CircleHelp size={18}/><span>Help & support</span></button>
           <div className="profile-row"><div className="profile-avatar">SC</div><div className="profile-copy"><strong>{user.user_metadata?.display_name || user.email || "Your workspace"}</strong><small>Signed-in account</small></div><button className="icon-button" aria-label="Sign out" title="Sign out" onClick={handleLogout}><ChevronDown size={16}/></button></div>
         </div>
       </aside>
@@ -346,6 +366,21 @@ export default function Home() {
             <section className="library-page"><div className="eyebrow"><BookOpenText size={14}/> SAVED NOTES</div><h1>Saved insights</h1><p className="settings-intro">Saved findings synced to your account.</p><div className="insights-list">{filteredInsights.map(item=><article className="saved-insight-card" key={item.id}><div className="library-icon"><Sparkles size={19}/></div><div className="library-copy"><strong>{item.title}</strong><small>{item.tool} · {new Date(item.createdAt).toLocaleString()}</small><ul>{item.summary.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></div><button className="icon-button" aria-label="Remove saved insight" onClick={()=>{setSavedInsights(old=>{const next=old.filter(x=>x.id!==item.id);persistLocal("pdfpilot-insights",next);return next});if(supabase&&user&&/^[0-9a-f-]{36}$/i.test(item.id))void supabase.from("saved_insights").delete().eq("id",item.id).eq("user_id",user.id).then(({error})=>{if(error)setNotice("Insight was removed from this view, but cloud deletion failed.");});}}><X size={16}/></button></article>)}{filteredInsights.length===0&&<div className="library-empty"><BookOpenText size={24}/><strong>No saved insights yet</strong><p>Use “Save insight” on any analysis result.</p><button className="primary-button" onClick={()=>selectTool("Analyze PDF")}>Analyze a PDF <ArrowRight size={16}/></button></div>}</div></section>
           ) : active === "Activity" ? (
             <section className="library-page"><div className="eyebrow"><Activity size={14}/> RECENT ACTIONS</div><h1>Activity</h1><p className="settings-intro">Completed PDF actions recorded on this device.</p><div className="library-card">{filteredHistory.map(item=><div className="library-row" key={item.id}><div className="library-icon"><Clock3 size={19}/></div><div className="library-copy"><strong>{item.tool}: {item.title}</strong><small>{new Date(item.createdAt).toLocaleString()}</small></div><span className="settings-status">Completed</span></div>)}{filteredHistory.length===0&&<div className="library-empty"><Activity size={24}/><strong>No activity yet</strong><p>Your completed PDF actions will appear here.</p></div>}</div></section>
+          ) : active === "Help & support" ? (
+            <section className="help-page">
+              <div className="eyebrow"><CircleHelp size={14}/> HELP & SUPPORT</div>
+              <h1>How can we help?</h1>
+              <p className="settings-intro">Quick answers for analyzing, comparing, and asking questions about PDFs.</p>
+              <div className="help-grid">
+                <article className="help-card"><h2>How do I analyze a PDF?</h2><p>Choose Analyze PDF, select a text-based PDF up to 20 MB, then select Analyze document. If no AI provider key is configured, PDFPilot uses built-in extractive analysis.</p></article>
+                <article className="help-card"><h2>Why is my scanned PDF not working?</h2><p>Scanned pages are often images rather than selectable text. OCR is not connected yet, so use a PDF with selectable text or run OCR before uploading.</p></article>
+                <article className="help-card"><h2>How does Chat with PDF work?</h2><p>Upload a PDF, enter a question using words from the document, and choose Ask question. Without an AI key, answers use keyword-based passage retrieval and may be incomplete.</p></article>
+                <article className="help-card"><h2>How do I compare two PDFs?</h2><p>Choose Compare documents and add two PDFs. Without AI, results show shared and unique terms; overlap is vocabulary overlap, not semantic similarity.</p></article>
+                <article className="help-card"><h2>Will uploaded files remain after refresh?</h2><p>Uploaded PDF files are not saved in the browser workspace. Choose files again after refresh. Your current section, search, and completed result are restored on this device.</p></article>
+                <article className="help-card"><h2>My result or history is missing</h2><p>Check that browser storage is enabled. Cloud history also depends on database access policies and network connectivity. Check My documents for saved results.</p></article>
+              </div>
+              <div className="help-contact-card"><div><h2>Still need help?</h2><p>This opens your email app with a support draft; it does not submit anything automatically.</p></div><a className="primary-button" href={"mailto:contact.shorlahdev@gmail.com?subject="+encodeURIComponent("PDFPilot AI support request")+"&body="+encodeURIComponent("Describe the issue:\n\nWhat you expected:\n\nWhat happened instead:\n")}>Email support <ArrowRight size={16}/></a></div>
+            </section>
           ) : (
             <section className="placeholder-page"><div className="placeholder-icon"><CircleHelp size={25}/></div><h1>{active}</h1><p>This section will be expanded after the core PDF workflow is tested.</p><button className="primary-button" onClick={()=>{setActive("Overview");setTool(null)}}>Back to overview <ArrowRight size={16}/></button></section>
           )}
