@@ -43,8 +43,18 @@ async function askModel(system: string, user: string) {
     signal: AbortSignal.timeout(25000)
   });
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(response.status === 429 ? "AI usage limit reached. Please try again later." : `AI provider request failed (${response.status}). ${detail.slice(0,180)}`);
+    // Keep provider response bodies and internal configuration details out of user-facing errors.
+    await response.text().catch(() => "");
+    if (response.status === 429) {
+      throw new Error("AI usage limit reached. Please try again later.");
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("AI service authentication is not configured correctly. Please contact the site administrator.");
+    }
+    if (response.status >= 500) {
+      throw new Error("The AI service is temporarily unavailable. Please try again shortly.");
+    }
+    throw new Error("The AI service could not complete this request. Please try again.");
   }
   const payload = await response.json();
   return String(payload.choices?.[0]?.message?.content || "").trim() || null;
