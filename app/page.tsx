@@ -9,10 +9,9 @@ import {
 } from "lucide-react";
 
 type ToolKey = "Analyze PDF" | "Compare documents" | "Chat with PDF";
-const recentDocs: { name: string; meta: string; tag: string; color: string; icon: string }[] = [];
 const tools: { title: ToolKey; description: string; icon: typeof FileSearch; tone: string }[] = [
   { title: "Analyze PDF", description: "Get clear summaries, insights, and key takeaways.", icon: FileSearch, tone: "green" },
-  { title: "Compare documents", description: "Find differences between two or more files.", icon: Files, tone: "purple" },
+  { title: "Compare documents", description: "Compare two PDFs and review key differences.", icon: Files, tone: "purple" },
   { title: "Chat with PDF", description: "Ask questions and get answers grounded in your files.", icon: MessageSquareText, tone: "orange" },
 ];
 
@@ -146,7 +145,7 @@ export default function Home() {
                   {result.documents && <><div className="compare-stats"><div><small>Vocabulary overlap</small><strong>{result.overlap}%</strong></div>{result.documents.map((d:{name:string;pages:number;words:number})=><div key={d.name}><small>{d.name}</small><strong>{d.pages} pages · {d.words} terms</strong></div>)}</div>{result.overview && <><h3>AI comparison overview</h3><p className="answer-text">{result.overview}</p></>}{result.keyDifferences?.length>0&&<><h3>Key differences</h3><ul>{result.keyDifferences.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.sharedPoints?.length>0&&<><h3>Shared points</h3><ul>{result.sharedPoints.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.followUps?.length>0&&<><h3>Follow-up checks</h3><ul>{result.followUps.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}<div className="extracted-grid"><div><h3>Terms only in first PDF</h3><p>{result.uniqueToFirst?.join(", ") || "None found"}</p></div><div><h3>Terms only in second PDF</h3><p>{result.uniqueToSecond?.join(", ") || "None found"}</p></div></div><p className="result-meta">{result.note}</p></>}
                   {result.disclaimer && <p className="result-disclaimer">{result.disclaimer}</p>}
                 </div>}
-                <p className="privacy-note"><ShieldCheck size={14}/> PDFs are processed in memory for this request and are not saved to a document library yet.</p>
+                <p className="privacy-note"><ShieldCheck size={14}/> PDF files are processed in memory. Results may be saved in this browser only; cloud storage is not connected.</p>
               </div>
               <div className="below-upload"><div><Sparkles size={18}/><strong>What you'll get</strong></div><p>{tool === "Compare documents" ? "A structured differences report, matching sections, changed values, and important clauses." : tool === "Chat with PDF" ? "Document-grounded answers, follow-up questions, and relevant page references." : "An executive summary, key findings, extracted facts, important dates, and suggested next steps."}</p></div>
             </section>
