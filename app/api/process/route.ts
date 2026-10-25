@@ -59,23 +59,23 @@ function stringList(value: unknown, limit = 6): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is string => typeof item === "string")
-    .map(item => item.replace(/\\s+/g, " ").trim())
+    .map(item => item.replace(/\s+/g, " ").trim())
     .filter(Boolean)
     .map(item => item.slice(0, 700))
     .slice(0, limit);
 }
 
-const STOP_WORDS = new Set(("a an the and or but if then than so because as at by for from in into of on onto to up with without is are was were be been being it its this that these those we you your they their them he she his her i our not no yes can could should would will may might must do does did have has had about after before over under again further once here there when where why how all any both each few more most other some such only own same too very document section page").split(/\\s+/));
+const STOP_WORDS = new Set(("a an the and or but if then than so because as at by for from in into of on onto to up with without is are was were be been being it its this that these those we you your they their them he she his her i our not no yes can could should would will may might must do does did have has had about after before over under again further once here there when where why how all any both each few more most other some such only own same too very document section page").split(/\s+/));
 
 function contentTerms(text: string) {
-  return (text.toLowerCase().match(/[a-z0-9]{3,}/g) || []).filter(word => !STOP_WORDS.has(word) && !/^\\d+$/.test(word));
+  return (text.toLowerCase().match(/[a-z0-9]{3,}/g) || []).filter(word => !STOP_WORDS.has(word) && !/^\d+$/.test(word));
 }
 
 function sentencesOf(text: string) {
   return text
     .replace(/([.!?])(?=[A-Z])/g, "$1 ")
-    .split(/(?<=[.!?])\\s+|\\n+/)
-    .map(s => s.replace(/\\s+/g, " ").trim())
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map(s => s.replace(/\s+/g, " ").trim())
     .filter(s => s.length > 35 && /[a-zA-Z]/.test(s));
 }
 function summarize(text: string) {
