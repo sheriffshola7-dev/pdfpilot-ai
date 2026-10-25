@@ -35,7 +35,8 @@ async function readPdf(file: File) {
 async function askModel(system: string, user: string) {
   const apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
-  const baseUrl = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\\/+$/, "");
+  let baseUrl = process.env.AI_BASE_URL || "https://api.openai.com/v1";
+  while (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
   const model = process.env.AI_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
   let response: Response;
   try {
