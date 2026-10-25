@@ -52,6 +52,7 @@ export default function Home() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [query, setQuery] = useState("");
+  const [chatQuestion, setChatQuestion] = useState("");
   const [notice, setNotice] = useState("");
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<Record<string, any> | null>(null);
@@ -184,7 +185,6 @@ export default function Home() {
     else { try { localStorage.removeItem("pdfpilot-history"); localStorage.removeItem("pdfpilot-insights"); } catch { /* Local storage may be unavailable. */ } setHistory([]); setSavedInsights([]); setResult(null); setTool(null); setActive("Overview"); setNotice("You have signed out."); }
   }
   function removeHistory(id:string) { setHistory(old=>{const next=old.filter(item=>item.id!==id);persistLocal("pdfpilot-history", next);return next;}); if (supabase && user && /^[0-9a-f-]{36}$/i.test(id)) void supabase.from("documents").delete().eq("id",id).eq("user_id",user.id).then(({error})=>{if(error)setNotice("History was removed from this view, but cloud deletion failed.");}); }
-  const [chatQuestion, setChatQuestion] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
