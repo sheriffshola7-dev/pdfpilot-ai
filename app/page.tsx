@@ -46,6 +46,21 @@ export default function Home() {
   function removeHistory(id:string) { setHistory(old=>{const next=old.filter(item=>item.id!==id);localStorage.setItem("pdfpilot-history",JSON.stringify(next));return next;}); }
   const [chatQuestion, setChatQuestion] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    function handleSearchShortcut(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (event.key === "Escape" && document.activeElement === searchRef.current) {
+        setQuery("");
+        searchRef.current?.blur();
+      }
+    }
+    window.addEventListener("keydown", handleSearchShortcut);
+    return () => window.removeEventListener("keydown", handleSearchShortcut);
+  }, []);
 
   function selectTool(next: ToolKey) {
     setTool(next);
@@ -129,7 +144,7 @@ export default function Home() {
         <header className="topbar">
           <button className="icon-button mobile-menu-button" onClick={() => setMobileMenu(true)} aria-label="Open menu"><Menu size={20}/></button>
           <div className="breadcrumbs">Workspace <span>/</span> <strong>{tool ?? active}</strong></div>
-          <div className="top-actions"><label className="search-box"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search documents..." /><kbd>⌘ K</kbd></label><button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>{theme === "dark" ? <Sun size={18}/> : <Moon size={18}/>}</button><button className="icon-button notification-button" aria-label="Notifications" onClick={() => setNotice("You're all caught up.")}><Bell size={18}/><i/></button><div className="top-avatar">SC</div></div>
+          <div className="top-actions"><label className="search-box"><Search size={16}/><input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search documents..." aria-label="Search documents, tools and saved insights" /><kbd>⌘ K</kbd></label><button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>{theme === "dark" ? <Sun size={18}/> : <Moon size={18}/>}</button><button className="icon-button notification-button" aria-label="Notifications" onClick={() => setNotice("You're all caught up.")}><Bell size={18}/><i/></button><div className="top-avatar">SC</div></div>
         </header>
 
         <div className="page-content">
