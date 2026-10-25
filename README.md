@@ -9,12 +9,13 @@
 - Server-side text extraction for PDFs with selectable text.
 - Extractive summary, key findings, dates, amounts, percentages, and word count.
 - Optional server-side OpenAI integration for AI-assisted summaries, Q&A, and document comparison.
-- Keyword-retrieval fallback when no OpenAI key is configured.
-- Two-document vocabulary comparison, plus AI-assisted comparison when configured.
+- Keyword-retrieval fallback when no OpenAI key is configured, with common stop words filtered from matching.
+- Two-document comparison using distinct content-word overlap (not a semantic similarity score), plus AI-assisted comparison when configured.
 - Export of results as JSON and Markdown reports.
 - Light/dark mode toggle with the choice saved on the current device.
 - Local browser-based processing history, activity list, and saved insights (result metadata only; not cloud-synced).
 - Uploaded PDF contents are processed in memory for the request and are not intentionally written to a document library.
+- Server-side limits: 20 MB per PDF, 120,000 extracted characters per file, and 1,500 characters per question. Truncated documents show a warning.
 
 ## Configure optional AI
 
@@ -37,10 +38,10 @@ Open http://localhost:3000.
 
 ## Next milestones
 
-1. Confirm CI build success and fix any issues.
-2. Complete core PDF workflow UX, local history, saved insights, and responsive theme checks.
-3. Add secure authentication and per-user cloud document storage.
-4. Add page-aware citations and OCR support.
-5. Improve reports and security, add rate limits and end-to-end tests.
+1. Confirm CI build success and fix any issues; test the workflows with real selectable-text PDFs.
+2. Add secure authentication and per-user cloud document storage with row-level access policies.
+3. Add page-aware citations and OCR support for scanned PDFs.
+4. Add production-grade rate limits, usage/cost controls, and end-to-end tests.
+5. Expand report formats and complete a production security review.
 
 Never put provider API keys in client-side code or commit secrets to this repository.
