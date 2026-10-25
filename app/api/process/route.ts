@@ -33,7 +33,9 @@ async function readPdf(file: File) {
  * Legacy OPENAI_* variables remain supported for existing deployments.
  */
 async function askModel(system: string, user: string) {
-  const apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+  const configuredKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+  const apiKey = configuredKey?.trim();
+  // No key is supported offline mode; do not send an empty/whitespace key.
   if (!apiKey) return null;
   let baseUrl = process.env.AI_BASE_URL || "https://api.openai.com/v1";
   while (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
