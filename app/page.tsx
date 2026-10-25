@@ -126,7 +126,7 @@ export default function Home() {
         <button className="workspace-switch"><div className="workspace-icon">S</div><div className="workspace-copy"><strong>Personal workspace</strong><small>Free plan</small></div><ChevronDown size={16}/></button>
         <div className="nav-caption">WORKSPACE</div>
         <nav className="main-nav">
-          {navItems.map(({label, icon: Icon}) => <button key={label} className={`nav-item ${active === label ? "nav-active" : ""}`} onClick={() => label === "Analyze PDF" || label === "Compare documents" || label === "Chat with PDF" ? selectTool(label as ToolKey) : (setActive(label), setTool(null))}><Icon size={18}/><span>{label}</span>{label === "My documents" && <span className="nav-count">{history.length}</span>}</button>)}
+          {navItems.map(({label, icon: Icon}) => <button key={label} className={`nav-item ${active === label ? "nav-active" : ""}`} onClick={() => { setMobileMenu(false); if (label === "Analyze PDF" || label === "Compare documents" || label === "Chat with PDF") selectTool(label as ToolKey); else { setActive(label); setTool(null); } }}><Icon size={18}/><span>{label}</span>{label === "My documents" && <span className="nav-count">{history.length}</span>}</button>)}
         </nav>
         <div className="nav-caption tools-caption">YOUR TOOLS</div>
         <button className="nav-item" onClick={() => {setActive("Saved insights"); setTool(null)}}><BookOpenText size={18}/><span>Saved insights</span></button>
@@ -171,7 +171,7 @@ export default function Home() {
                 </div>}
                 <p className="privacy-note"><ShieldCheck size={14}/> PDF files are processed in memory. Results may be saved in this browser only; cloud storage is not connected.</p>
               </div>
-              <div className="below-upload"><div><Sparkles size={18}/><strong>What you'll get</strong></div><p>{tool === "Compare documents" ? "A structured differences report, matching sections, changed values, and important clauses." : tool === "Chat with PDF" ? "Document-grounded answers, follow-up questions, and relevant page references." : "An executive summary, key findings, extracted facts, important dates, and suggested next steps."}</p></div>
+              <div className="below-upload"><div><Sparkles size={18}/><strong>What you'll get</strong></div><p>{tool === "Compare documents" ? "A comparison of extracted content words, plus AI-assisted differences and shared points when server-side AI is configured. Always verify against the original PDFs." : tool === "Chat with PDF" ? "Answers grounded in extracted document text. Page-level citations are not available yet, so check important answers against the original PDF." : "An extractive summary, key findings, detected dates and amounts, and AI-assisted risks or action items when server-side AI is configured."}</p></div>
             </section>
           ) : active === "Overview" ? (
             <>
