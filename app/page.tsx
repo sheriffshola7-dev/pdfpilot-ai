@@ -52,7 +52,7 @@ export default function Home() {
   function saveInsight() {
     if (!result) return;
     const entry={id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,tool:tool || "Analysis",title:result.document?.name || result.documents?.map((d:{name:string})=>d.name).join(" ↔ ") || "Saved insight",createdAt:new Date().toISOString(),summary:result.summary?.slice(0,3) || (result.answer ? [result.answer] : result.keyDifferences?.slice(0,3) || [result.overview || "Document insight"])};
-    const saved = persistLocal("pdfpilot-insights", [...savedInsights.slice(0,49).map((item) => item), entry]);
+    const saved = persistLocal("pdfpilot-insights", [entry, ...savedInsights].slice(0,50));
     setSavedInsights(old=>[entry,...old].slice(0,50));
     if (saved) setNotice("Insight saved on this device.");
   }
