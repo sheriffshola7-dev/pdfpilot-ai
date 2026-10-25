@@ -9,11 +9,7 @@ import {
 } from "lucide-react";
 
 type ToolKey = "Analyze PDF" | "Compare documents" | "Chat with PDF";
-const recentDocs = [
-  { name: "Q3 Financial Report.pdf", meta: "PDF · 24 pages · Analyzed 2 hours ago", tag: "Analyzed", color: "mint", icon: "report" },
-  { name: "Service Agreement v2.pdf", meta: "PDF · 12 pages · Compared yesterday", tag: "Compared", color: "lavender", icon: "contract" },
-  { name: "Market Research 2026.pdf", meta: "PDF · 38 pages · Analyzed Oct 22", tag: "Analyzed", color: "peach", icon: "research" },
-];
+const recentDocs: { name: string; meta: string; tag: string; color: string; icon: string }[] = [];
 const tools: { title: ToolKey; description: string; icon: typeof FileSearch; tone: string }[] = [
   { title: "Analyze PDF", description: "Get clear summaries, insights, and key takeaways.", icon: FileSearch, tone: "green" },
   { title: "Compare documents", description: "Find differences between two or more files.", icon: Files, tone: "purple" },
@@ -100,7 +96,7 @@ export default function Home() {
         <button className="workspace-switch"><div className="workspace-icon">S</div><div className="workspace-copy"><strong>Personal workspace</strong><small>Free plan</small></div><ChevronDown size={16}/></button>
         <div className="nav-caption">WORKSPACE</div>
         <nav className="main-nav">
-          {navItems.map(({label, icon: Icon}) => <button key={label} className={`nav-item ${active === label ? "nav-active" : ""}`} onClick={() => label === "Analyze PDF" || label === "Compare documents" || label === "Chat with PDF" ? selectTool(label as ToolKey) : (setActive(label), setTool(null))}><Icon size={18}/><span>{label}</span>{label === "My documents" && <span className="nav-count">3</span>}</button>)}
+          {navItems.map(({label, icon: Icon}) => <button key={label} className={`nav-item ${active === label ? "nav-active" : ""}`} onClick={() => label === "Analyze PDF" || label === "Compare documents" || label === "Chat with PDF" ? selectTool(label as ToolKey) : (setActive(label), setTool(null))}><Icon size={18}/><span>{label}</span>{label === "My documents" && <span className="nav-count">0</span>}</button>)}
         </nav>
         <div className="nav-caption tools-caption">YOUR TOOLS</div>
         <button className="nav-item" onClick={() => {setActive("Saved insights"); setTool(null)}}><BookOpenText size={18}/><span>Saved insights</span></button>
@@ -154,12 +150,24 @@ export default function Home() {
               <div className="section-title-row"><div><h2>What would you like to do?</h2><p>Powerful tools for your documents</p></div><span className="subtle-label">3 TOOLS</span></div>
               <div className="tool-grid">{tools.map(({title,description,icon:Icon,tone})=><button className="tool-card" key={title} onClick={() => selectTool(title)}><div className={`tool-icon ${tone}`}><Icon size={21}/></div><div className="tool-card-arrow"><ArrowUpRight size={17}/></div><h3>{title}</h3><p>{description}</p><span className="tool-link">Get started <ArrowRight size={14}/></span></button>)}</div>
               <div className="section-title-row recent-heading"><div><h2>Recent documents</h2><p>Pick up where you left off</p></div><button className="text-button" onClick={() => {setActive("My documents");setTool(null)}}>View all <ArrowRight size={15}/></button></div>
-              <div className="documents-card">{recentDocs.filter(d=>d.name.toLowerCase().includes(query.toLowerCase())).map((doc)=><div className="document-row" key={doc.name}><div className={`document-icon ${doc.color}`}><FileText size={20}/></div><div className="document-info"><strong>{doc.name}</strong><small>{doc.meta}</small></div><span className={`status-pill ${doc.tag==="Compared"?"compared":""}`}><i/>{doc.tag}</span><button className="row-arrow" aria-label={`Open ${doc.name}`} onClick={() => {setNotice("Connect storage to open saved document history.");setActive("My documents")}}><ArrowRight size={17}/></button></div>)}{recentDocs.filter(d=>d.name.toLowerCase().includes(query.toLowerCase())).length===0&&<div className="empty-search">No matching sample documents.</div>}<button className="add-document-row" onClick={() => selectTool("Analyze PDF")}><span><Plus size={17}/></span> Analyze a new document</button></div>
+              <div className="documents-card">{recentDocs.filter(d=>d.name.toLowerCase().includes(query.toLowerCase())).map((doc)=><div className="document-row" key={doc.name}><div className={`document-icon ${doc.color}`}><FileText size={20}/></div><div className="document-info"><strong>{doc.name}</strong><small>{doc.meta}</small></div><span className={`status-pill ${doc.tag==="Compared"?"compared":""}`}><i/>{doc.tag}</span><button className="row-arrow" aria-label={`Open ${doc.name}`} onClick={() => {setNotice("Connect storage to open saved document history.");setActive("My documents")}}><ArrowRight size={17}/></button></div>)}{recentDocs.filter(d=>d.name.toLowerCase().includes(query.toLowerCase())).length===0&&<div className="empty-search">No documents match your search.</div>}<button className="add-document-row" onClick={() => selectTool("Analyze PDF")}><span><Plus size={17}/></span> Analyze a new document</button></div>
               <div className="bottom-grid"><div className="insight-card"><div className="insight-icon"><Activity size={18}/></div><div><strong>Your workspace is ready to explore</strong><p>Upload a PDF to begin. Your analysis history will appear here once document processing is connected.</p></div><ArrowDownRight size={18}/></div><div className="usage-card"><div className="usage-top"><span>WORKSPACE USAGE</span><span className="usage-free">FREE PLAN</span></div><div className="usage-number">Getting started <span>· 0 uploads</span></div><div className="usage-track"><div/></div><p>Usage tracking will activate when accounts are connected.</p></div></div>
               <footer className="page-footer"><span>© 2026 PDFPilot AI</span><span>Thoughtfully built by <b>Shorlah Cloud</b></span><span><ShieldCheck size={13}/> Privacy-first workspace</span></footer>
             </>
+          ) : active === "Settings" ? (
+            <section className="settings-page">
+              <div className="eyebrow"><Settings2 size={14}/> PREFERENCES</div>
+              <h1>Settings</h1>
+              <p className="settings-intro">Make PDFPilot AI comfortable for your workflow.</p>
+              <div className="settings-card">
+                <div className="settings-item"><div className="settings-item-icon"><Sun size={20}/></div><div className="settings-item-copy"><strong>Appearance</strong><p>Choose a theme for the dashboard. Your choice is saved on this device.</p></div><button className="theme-switch-button" onClick={toggleTheme}>{theme === "dark" ? <Sun size={17}/> : <Moon size={17}/>} Switch to {theme === "dark" ? "light" : "dark"} mode</button></div>
+                <div className="settings-item"><div className="settings-item-icon"><ShieldCheck size={20}/></div><div className="settings-item-copy"><strong>Document privacy</strong><p>PDFs are processed for each request and are not saved to a personal library in this version.</p></div><span className="settings-status">No storage connected</span></div>
+                <div className="settings-item"><div className="settings-item-icon"><Sparkles size={20}/></div><div className="settings-item-copy"><strong>AI provider</strong><p>AI-enhanced answers require a server-side OPENAI_API_KEY. Without it, available text-based fallbacks are used.</p></div><span className="settings-status">Server configuration</span></div>
+              </div>
+              <button className="primary-button settings-back" onClick={() => {setActive("Overview");setTool(null)}}>Back to overview <ArrowRight size={16}/></button>
+            </section>
           ) : (
-            <section className="placeholder-page"><div className="placeholder-icon"><FolderOpen size={25}/></div><h1>{active}</h1><p>This workspace section is part of the interface foundation. Saved files, real activity, account settings, and history will be connected in the next development stages.</p><button className="primary-button" onClick={() => {setActive("Overview");setTool(null)}}>Back to overview <ArrowRight size={16}/></button></section>
+            <section className="placeholder-page"><div className="placeholder-icon"><FolderOpen size={25}/></div><h1>{active}</h1><p>{active === "My documents" ? "Your document library is empty. Uploading and processing works, but private cloud storage and account-linked history need database setup." : active === "Saved insights" ? "Save and revisit important findings after persistent user accounts and database storage are connected." : "Activity history will appear here after database-backed accounts and document history are connected."}</p><button className="primary-button" onClick={() => active === "My documents" ? selectTool("Analyze PDF") : (setActive("Overview"),setTool(null))}>{active === "My documents" ? "Analyze a PDF" : "Back to overview"} <ArrowRight size={16}/></button></section>
           )}
         </div>
       </section>
