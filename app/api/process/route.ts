@@ -46,14 +46,18 @@ async function askModel(system: string, user: string) {
 }
 
 function safeJson(text: string): Record<string, unknown> | null {
-  const cleaned = text.trim().replace(/^```(?:json)?\\s*/i, \"\").replace(/\\s*```$/, \"\");
-  const start = cleaned.indexOf(\"{\"); const end = cleaned.lastIndexOf(\"}\");
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```")) cleaned = cleaned.replace(/^\x60\x60\x60(?:json)?\s*/i, "").replace(/\s*\x60\x60\x60$/, "");
+  const start = cleaned.indexOf("{"); const end = cleaned.lastIndexOf("}");
   if (start < 0 || end <= start) return null;
-  try { const value = JSON.parse(cleaned.slice(start, end + 1)); return value && typeof value === \"object\" && !Array.isArray(value) ? value as Record<string, unknown> : null; } catch { return null; }
+  try {
+    const value = JSON.parse(cleaned.slice(start, end + 1));
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch { return null; }
 }
 function stringList(value: unknown, limit = 6): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === \"string\").map(item => item.trim()).filter(Boolean).slice(0, limit);
+  return value.filter((item): item is string => typeof item === "string").map(item => item.trim()).filter(Boolean).slice(0, limit);
 }
 
 function sentencesOf(text: string) {
