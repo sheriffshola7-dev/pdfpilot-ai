@@ -186,8 +186,12 @@ export async function POST(request: Request) {
         const coverage = matchedTerms / Math.max(queryTerms.length, 1);
         const phraseBonus = normalizedQuestion.length > 8 && sentence.toLowerCase().includes(normalizedQuestion) ? 2 : 0;
         const lengthPenalty = sentence.length > 420 ? 0.72 : sentence.length < 70 ? 0.9 : 1;
-        return { sentence, index, score: (matchedTerms + coverage + phraseBonus) * lengthPenalty };
-      }).filter((item) => item.score > 0)
+        return { sentence, index, matchedTerms, coverage, score: (matchedTerms + coverage + phraseBonus) * lengthPenalty };
+      }).filter((item) => {
+        // Require a meaningful match so incidental shared words do not look like answers.
+        if (queryTerms.length >= 3) return item.matchedTerms >= 2 && item.coverage >= 0.25;
+        return item.matchedTerms >= 1 && item.coverage >= 0.5;
+      })
         .sort((a, b) => b.score - a.score || a.index - b.index)
         .filter((item, index, all) => all.findIndex((other) => other.sentence.toLowerCase() === item.sentence.toLowerCase()) === index)
         .slice(0, 5);
