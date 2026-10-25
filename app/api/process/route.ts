@@ -26,16 +26,25 @@ async function readPdf(file: File) {
   return { name: file.name, pages: parsed.numpages || 0, text: text.slice(0, MAX_TEXT_CHARS), truncated: text.length > MAX_TEXT_CHARS };
 }
 
+/**
+ * OpenAI-compatible provider adapter.
+ * Set AI_BASE_URL, AI_API_KEY and AI_MODEL to switch providers without changing code.
+ * If AI_BASE_URL is omitted, the official OpenAI endpoint is used.
+ * Legacy OPENAI_* variables remain supported for existing deployments.
+ */
 async function askModel(system: string, user: string) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
+  let baseUrl = process.env.AI_BASE_URL || "https://api.openai.com/v1";
+  while (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
+  const model = process.env.AI_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
   let response: Response;
   try {
-    response = await fetch("https://api.openai.com/v1/chat/completions", {
+    response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        model,
         temperature: 0.2,
         messages: [
           { role: "system", content: system },
@@ -51,17 +60,12 @@ async function askModel(system: string, user: string) {
     throw new Error("The AI service is temporarily unavailable. Please try again shortly.");
   }
   if (!response.ok) {
-    // Keep provider response bodies and internal configuration details out of user-facing errors.
     await response.text().catch(() => "");
-    if (response.status === 429) {
-      throw new Error("AI usage limit reached. Please try again later.");
-    }
+    if (response.status === 429) throw new Error("AI usage limit reached. Please try again later.");
     if (response.status === 401 || response.status === 403) {
       throw new Error("AI service authentication is not configured correctly. Please contact the site administrator.");
     }
-    if (response.status >= 500) {
-      throw new Error("The AI service is temporarily unavailable. Please try again shortly.");
-    }
+    if (response.status >= 500) throw new Error("The AI service is temporarily unavailable. Please try again shortly.");
     throw new Error("The AI service could not complete this request. Please try again.");
   }
   let payload: { choices?: Array<{ message?: { content?: unknown } }> };
@@ -72,7 +76,6 @@ async function askModel(system: string, user: string) {
   }
   return String(payload.choices?.[0]?.message?.content || "").trim() || null;
 }
-
 function safeJson(text: string): Record<string, unknown> | null {
   let cleaned = text.trim();
   if (cleaned.startsWith("```")) cleaned = cleaned.replace(/^\x60\x60\x60(?:json)?\s*/i, "").replace(/\s*\x60\x60\x60$/, "");
@@ -146,7 +149,7 @@ export async function POST(request: Request) {
         `Compare these documents using their extracted text.\nDOCUMENT A: ${a.name}\n${a.text.slice(0,22000)}\n\nDOCUMENT B: ${b.name}\n${b.text.slice(0,22000)}`
       );
       const semantic = aiText ? safeJson(aiText) : null;
-      return NextResponse.json({ action, documents:[{name:a.name,pages:a.pages,words:aWords.size,truncated:a.truncated},{name:b.name,pages:b.pages,words:bWords.size,truncated:b.truncated}], overlap, sharedTerms:common.slice(0,40), uniqueToFirst:onlyA, uniqueToSecond:onlyB, ...(semantic ? { overview: typeof semantic.overview === "string" ? semantic.overview.slice(0,3000) : "", keyDifferences: stringList(semantic.keyDifferences, 8), sharedPoints: stringList(semantic.sharedPoints, 8), followUps: stringList(semantic.followUps, 8) } : {}), aiEnabled:Boolean(semantic), truncated:Boolean(a.truncated || b.truncated), note:semantic ? "AI-assisted comparison of extracted text. Vocabulary overlap is based on distinct content words, not a legal or semantic similarity score. Verify important differences against the original PDFs." : "Content-word overlap only; this is not a semantic similarity score. Set OPENAI_API_KEY on the server to enable AI-assisted comparison." });
+      return NextResponse.json({ action, documents:[{name:a.name,pages:a.pages,words:aWords.size,truncated:a.truncated},{name:b.name,pages:b.pages,words:bWords.size,truncated:b.truncated}], overlap, sharedTerms:common.slice(0,40), uniqueToFirst:onlyA, uniqueToSecond:onlyB, ...(semantic ? { overview: typeof semantic.overview === "string" ? semantic.overview.slice(0,3000) : "", keyDifferences: stringList(semantic.keyDifferences, 8), sharedPoints: stringList(semantic.sharedPoints, 8), followUps: stringList(semantic.followUps, 8) } : {}), aiEnabled:Boolean(semantic), truncated:Boolean(a.truncated || b.truncated), note:semantic ? "AI-assisted comparison of extracted text. Vocabulary overlap is based on distinct content words, not a legal or semantic similarity score. Verify important differences against the original PDFs." : "Content-word overlap only; this is not a semantic similarity score. Configure AI_API_KEY and optionally AI_BASE_URL and AI_MODEL on the server to enable AI-assisted comparison." });
     }
     const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "Choose a PDF first." }, { status: 400 });
@@ -168,7 +171,7 @@ export async function POST(request: Request) {
         const lengthPenalty = sentence.length > 420 ? 0.8 : sentence.length < 70 ? 0.85 : 1;
         return { sentence, index, score: (matchedTerms + coverage) * lengthPenalty };
       }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score || a.index-b.index).slice(0,5);
-      return NextResponse.json({ action, document:doc.name, truncated: Boolean(doc.truncated), answer:aiAnswer || (matches.length ? matches.map(x=>x.sentence).join("\n\n") : "I couldn't find a clear passage matching that question in the selectable text of this PDF. Try using the document's own names or terms in your question."), matches:matches.length, aiEnabled:Boolean(aiAnswer), disclaimer:aiAnswer ? "AI-generated answer based on extracted document text. Check important claims against the original PDF; page citations are not available yet." : "Keyword-based retrieval is active. Set OPENAI_API_KEY on the server to enable AI-generated answers." });
+      return NextResponse.json({ action, document:doc.name, truncated: Boolean(doc.truncated), answer:aiAnswer || (matches.length ? matches.map(x=>x.sentence).join("\n\n") : "I couldn't find a clear passage matching that question in the selectable text of this PDF. Try using the document's own names or terms in your question."), matches:matches.length, aiEnabled:Boolean(aiAnswer), disclaimer:aiAnswer ? "AI-generated answer based on extracted document text. Check important claims against the original PDF; page citations are not available yet." : "Keyword-based retrieval is active. Configure AI_API_KEY and optionally AI_BASE_URL and AI_MODEL on the server to enable AI-generated answers." });
     }
     const baseline = summarize(doc.text);
     const aiText = await askModel(
@@ -177,7 +180,7 @@ export async function POST(request: Request) {
     );
     const parsedAI = aiText ? safeJson(aiText) : null;
     const aiResult = parsedAI ? { summary: stringList(parsedAI.summary), keyFindings: stringList(parsedAI.keyFindings, 8), risks: stringList(parsedAI.risks, 8), actionItems: stringList(parsedAI.actionItems, 8) } : null;
-    return NextResponse.json({ action:"analyze", document:{name:doc.name,pages:doc.pages}, ...baseline, ...(aiResult || {}), aiEnabled:Boolean(aiResult), truncated: Boolean(doc.truncated), disclaimer:aiResult ? "AI-assisted analysis based on extracted PDF text. Verify important details against the source document; page-level citations are not available yet." : "Extractive first-pass analysis is active. Add OPENAI_API_KEY as a server environment variable to enable AI-assisted analysis. Scanned PDFs require OCR, which is not connected yet." });
+    return NextResponse.json({ action:"analyze", document:{name:doc.name,pages:doc.pages}, ...baseline, ...(aiResult || {}), aiEnabled:Boolean(aiResult), truncated: Boolean(doc.truncated), disclaimer:aiResult ? "AI-assisted analysis based on extracted PDF text. Verify important details against the source document; page-level citations are not available yet." : "Extractive first-pass analysis is active. Configure AI_API_KEY and optionally AI_BASE_URL and AI_MODEL on the server to enable AI-assisted analysis. Scanned PDFs require OCR, which is not connected yet." });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to process this PDF.";
     const status = /20 MB|too large|larger than/i.test(message) ? 413
