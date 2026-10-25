@@ -110,21 +110,36 @@ function sentencesOf(text: string) {
     .filter(s => s.length > 35 && /[a-zA-Z]/.test(s));
 }
 function summarize(text: string) {
-  const sentences = sentencesOf(text);
+  const sentences = sentencesOf(text).filter((sentence) => contentTerms(sentence).length >= 3);
   const terms = contentTerms(text);
   const freq = new Map<string, number>();
   for (const word of terms) freq.set(word, (freq.get(word) || 0) + 1);
+
   const ranked = sentences.map((sentence, index) => {
     const words = contentTerms(sentence);
+    const uniqueWords = new Set(words);
     const frequencyScore = words.reduce((sum, word) => sum + Math.min(freq.get(word) || 0, 5), 0) / Math.max(words.length, 1);
-    const positionBonus = index < 3 ? 0.35 : index < 8 ? 0.15 : 0;
-    const lengthPenalty = sentence.length > 420 ? 0.75 : 1;
-    return { sentence, index, score: (frequencyScore + positionBonus) * lengthPenalty };
-  }).sort((a,b) => b.score-a.score);
-  const chosen = ranked.slice(0, Math.min(5, ranked.length)).sort((a,b)=>a.index-b.index).map(x=>x.sentence);
-  const dates = [...new Set(text.match(/\b(?:\d{1,2}[/-]){1,2}\d{2,4}\b|\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/gi) || [])].slice(0,20);
-  const amounts = [...new Set(text.match(/(?:[$£€₦]\s?\d[\d,.]*(?:\s?(?:million|billion|thousand|%))?|\b\d[\d,.]*\s?(?:percent|%)\b)/gi) || [])].slice(0,20);
-  return { summary: chosen.length ? chosen : [text.slice(0, 800)], keyFindings: chosen.slice(0,3), dates, amounts, wordCount: (text.match(/\b[\w'-]+\b/g)||[]).length };
+    const coverageScore = uniqueWords.size / Math.max(words.length, 1);
+    const positionBonus = index < 3 ? 0.3 : index < 8 ? 0.12 : 0;
+    const lengthPenalty = sentence.length > 420 ? 0.7 : sentence.length < 55 ? 0.8 : 1;
+    return { sentence, index, words: uniqueWords, score: (frequencyScore + coverageScore * 0.5 + positionBonus) * lengthPenalty };
+  }).sort((a, b) => b.score - a.score);
+
+  // Prefer distinct points over several sentences repeating the same idea.
+  const selected: typeof ranked = [];
+  for (const candidate of ranked) {
+    const candidateWords = candidate.words;
+    const tooSimilar = selected.some((existing) => {
+      const overlap = [...candidateWords].filter((word) => existing.words.has(word)).length;
+      return overlap / Math.max(Math.min(candidateWords.size, existing.words.size), 1) > 0.72;
+    });
+    if (!tooSimilar) selected.push(candidate);
+    if (selected.length >= 5) break;
+  }
+  const chosen = selected.sort((a, b) => a.index - b.index).map((item) => item.sentence);
+  const dates = [...new Set(text.match(/\b(?:\d{1,2}[/-]){1,2}\d{2,4}\b|\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/gi) || [])].slice(0, 20);
+  const amounts = [...new Set(text.match(/(?:[$£€₦]\s?\d[\d,.]*(?:\s?(?:million|billion|thousand|%))?|\b\d[\d,.]*\s?(?:percent|%)\b)/gi) || [])].slice(0, 20);
+  return { summary: chosen.length ? chosen : [text.slice(0, 800)], keyFindings: chosen.slice(0, 3), dates, amounts, wordCount: (text.match(/\b[\w'-]+\b/g) || []).length };
 }
 
 export async function POST(request: Request) {
