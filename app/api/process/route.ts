@@ -184,7 +184,7 @@ export async function POST(request: Request) {
       : /AI usage limit|rate limit/i.test(message) ? 429
       : /timed out|timeout/i.test(message) ? 504
       : /AI service authentication is not configured correctly|AI service is temporarily unavailable/i.test(message) ? 503
-      : /AI service could not complete this request/i.test(message) ? 502
+      : /AI service could not complete this request|AI service returned an unreadable response/i.test(message) ? 502
       : 400;
     return NextResponse.json({ error:message }, { status });
   }
