@@ -148,7 +148,13 @@ export async function POST(request: Request) {
         `Document name: ${doc.name}\nQuestion: ${question}\n\nDOCUMENT TEXT (untrusted source material):\n${excerpt}`
       );
       const queryTerms = contentTerms(question);
-      const matches = sentencesOf(doc.text).map((sentence,index)=>({sentence,index,score:queryTerms.reduce((n,w)=>n+(sentence.toLowerCase().includes(w)?1:0),0)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,5);
+      const matches = sentencesOf(doc.text).map((sentence,index)=>{
+        const sentenceTerms = new Set(contentTerms(sentence));
+        const matchedTerms = queryTerms.filter(word => sentenceTerms.has(word)).length;
+        const coverage = matchedTerms / Math.max(queryTerms.length, 1);
+        const lengthPenalty = sentence.length > 420 ? 0.8 : sentence.length < 70 ? 0.85 : 1;
+        return { sentence, index, score: (matchedTerms + coverage) * lengthPenalty };
+      }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score || a.index-b.index).slice(0,5);
       return NextResponse.json({ action, document:doc.name, truncated: Boolean(doc.truncated), answer:aiAnswer || (matches.length ? matches.map(x=>x.sentence).join("\n\n") : "I couldn't find a clear passage matching that question in the selectable text of this PDF. Try using the document's own names or terms in your question."), matches:matches.length, aiEnabled:Boolean(aiAnswer), disclaimer:aiAnswer ? "AI-generated answer based on extracted document text. Check important claims against the original PDF; page citations are not available yet." : "Keyword-based retrieval is active. Set OPENAI_API_KEY on the server to enable AI-generated answers." });
     }
     const baseline = summarize(doc.text);
@@ -161,7 +167,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ action:"analyze", document:{name:doc.name,pages:doc.pages}, ...baseline, ...(aiResult || {}), aiEnabled:Boolean(aiResult), truncated: Boolean(doc.truncated), disclaimer:aiResult ? "AI-assisted analysis based on extracted PDF text. Verify important details against the source document; page-level citations are not available yet." : "Extractive first-pass analysis is active. Add OPENAI_API_KEY as a server environment variable to enable AI-assisted analysis. Scanned PDFs require OCR, which is not connected yet." });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to process this PDF.";
-    const status = /20 MB|too large|larger than/i.test(message) ? 413 : /AI usage limit|rate limit/i.test(message) ? 429 : /timed out|timeout/i.test(message) ? 504 : 400;
+    const status = /20 MB|too large|larger than/i.test(message) ? 413
+      : /AI usage limit|rate limit/i.test(message) ? 429
+      : /timed out|timeout/i.test(message) ? 504
+      : /AI service authentication is not configured correctly|AI service is temporarily unavailable/i.test(message) ? 503
+      : /AI service could not complete this request/i.test(message) ? 502
+      : 400;
     return NextResponse.json({ error:message }, { status });
   }
 }
