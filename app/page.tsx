@@ -163,7 +163,7 @@ export default function Home() {
     if (error) setNotice("Could not sign out. Please try again.");
     else { try { localStorage.removeItem("pdfpilot-history"); localStorage.removeItem("pdfpilot-insights"); } catch { /* Local storage may be unavailable. */ } setHistory([]); setSavedInsights([]); setResult(null); setTool(null); setActive("Overview"); setNotice("You have signed out."); }
   }
-  function removeHistory(  function removeHistory(id:string) { setHistory(old=>{const next=old.filter(item=>item.id!==id);persistLocal("pdfpilot-history", next);return next;}); if (supabase && user && /^[0-9a-f-]{36}$/i.test(id)) void supabase.from("documents").delete().eq("id",id).eq("user_id",user.id).then(({error})=>{if(error)setNotice("History was removed from this view, but cloud deletion failed.");}); }
+  function removeHistory(id:string) { setHistory(old=>{const next=old.filter(item=>item.id!==id);persistLocal("pdfpilot-history", next);return next;}); if (supabase && user && /^[0-9a-f-]{36}$/i.test(id)) void supabase.from("documents").delete().eq("id",id).eq("user_id",user.id).then(({error})=>{if(error)setNotice("History was removed from this view, but cloud deletion failed.");}); }
   const [chatQuestion, setChatQuestion] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
