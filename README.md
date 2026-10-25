@@ -13,7 +13,8 @@
 - Two-document comparison using distinct content-word overlap (not a semantic similarity score), plus AI-assisted comparison when configured.
 - Export of results as JSON and Markdown reports.
 - Light/dark mode toggle with the choice saved on the current device.
-- Local browser-based processing history, activity list, and saved insights (result metadata only; not cloud-synced).
+- Supabase email/password sign-up, email-verification links, sign-in, and sign-out.
+- Per-user cloud document history and saved insights protected by Supabase Row Level Security, with browser storage used as a short-term cache.
 - Uploaded PDF files are processed for the request and are not intentionally written to a document library. When `OPENAI_API_KEY` is configured, selected extracted text is sent to OpenAI for AI-assisted results; do not upload confidential or sensitive documents until provider/data-handling requirements have been reviewed.
 - Server-side limits: 20 MB per PDF, 120,000 extracted characters per file, and 1,500 characters per question. Truncated documents show a warning.
 
@@ -23,7 +24,7 @@ Copy `.env.example` to `.env.local` for local development and set `OPENAI_API_KE
 
 ## Important limitations
 
-This is an early functional foundation, **not yet a production AI service**. Text extraction supports PDFs with selectable text; scanned PDFs need OCR, which is not connected. AI requests are limited to an excerpt of extracted text and do not yet provide page-level citations. Authentication, cloud-synced per-user document storage/history, OCR, page-level citations, rate limiting, cost controls, downloadable PDF/DOCX reports, and a production security review remain future milestones. Local history is device/browser-specific and can be cleared by the user through browser storage; do not treat it as a secure cloud document library. Do not upload confidential or sensitive documents until authentication, access controls, and deployment security are complete.
+This is an early functional foundation, **not yet a production AI service**. Text extraction supports PDFs with selectable text; scanned PDFs need OCR, which is not connected. AI requests are limited to an excerpt of extracted text and do not yet provide page-level citations. OCR, page-level citations, rate limiting, cost controls, downloadable PDF/DOCX reports, and a production security review remain future milestones. PDF files themselves are not stored; analysis outputs and metadata are stored per signed-in user. Verify Supabase email redirect settings and configure environment variables in the hosting provider before deployment. Do not upload confidential or sensitive documents until authentication, access controls, and deployment security are complete.
 
 ## Run locally
 
@@ -39,7 +40,7 @@ Open http://localhost:3000.
 ## Next milestones
 
 1. Confirm CI build success and fix any issues; test the workflows with real selectable-text PDFs.
-2. Add secure authentication and per-user cloud document storage with row-level access policies.
+2. Configure production environment variables and allowed authentication redirect URLs, then test email verification and per-user data isolation.
 3. Add page-aware citations and OCR support for scanned PDFs.
 4. Add production-grade rate limits, usage/cost controls, and end-to-end tests.
 5. Expand report formats and complete a production security review.
