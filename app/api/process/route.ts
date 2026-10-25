@@ -14,13 +14,13 @@ async function readPdf(file: File) {
   }
   const buffer = Buffer.from(await file.arrayBuffer());
   const parsed = await pdfParse(buffer);
-  const text = (parsed.text || "").replace(/[\\t ]+/g, " ").replace(/\\n{3,}/g, "\\n\\n").trim();
+  const text = (parsed.text || "").replace(/[\t ]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   if (!text) throw new Error("No selectable text was found. This may be a scanned PDF; OCR support is not connected yet.");
   return { name: file.name, pages: parsed.numpages || 0, text };
 }
 
 function sentencesOf(text: string) {
-  return text.split(/(?<=[.!?])\\s+(?=[A-Z0-9“"'])/).map(s => s.trim()).filter(s => s.length > 35);
+  return text.split(/(?<=[.!?])\s+(?=[A-Z0-9“"'])/).map(s => s.trim()).filter(s => s.length > 35);
 }
 function summarize(text: string) {
   const sentences = sentencesOf(text);
@@ -33,9 +33,9 @@ function summarize(text: string) {
     return { sentence, index, score };
   }).sort((a,b) => b.score-a.score);
   const chosen = ranked.slice(0, Math.min(5, ranked.length)).sort((a,b)=>a.index-b.index).map(x=>x.sentence);
-  const dates = [...new Set(text.match(/\\b(?:\\d{1,2}[/-]){1,2}\\d{2,4}\\b|\\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2},?\\s+\\d{4}\\b/gi) || [])].slice(0,20);
-  const amounts = [...new Set(text.match(/(?:[$£€₦]\\s?\\d[\\d,.]*(?:\\s?(?:million|billion|thousand|%))?|\\b\\d[\\d,.]*\\s?(?:percent|%)\\b)/gi) || [])].slice(0,20);
-  return { summary: chosen.length ? chosen : [text.slice(0, 800)], keyFindings: chosen.slice(0,3), dates, amounts, wordCount: (text.match(/\\b[\\w'-]+\\b/g)||[]).length };
+  const dates = [...new Set(text.match(/\b(?:\d{1,2}[/-]){1,2}\d{2,4}\b|\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/gi) || [])].slice(0,20);
+  const amounts = [...new Set(text.match(/(?:[$£€₦]\s?\d[\d,.]*(?:\s?(?:million|billion|thousand|%))?|\b\d[\d,.]*\s?(?:percent|%)\b)/gi) || [])].slice(0,20);
+  return { summary: chosen.length ? chosen : [text.slice(0, 800)], keyFindings: chosen.slice(0,3), dates, amounts, wordCount: (text.match(/\b[\w'-]+\b/g)||[]).length };
 }
 
 export async function POST(request: Request) {
@@ -47,8 +47,8 @@ export async function POST(request: Request) {
       const second = form.get("file2");
       if (!(first instanceof File) || !(second instanceof File)) return NextResponse.json({ error: "Choose two PDFs to compare." }, { status: 400 });
       const [a,b] = await Promise.all([readPdf(first), readPdf(second)]);
-      const aWords = new Set(a.text.toLowerCase().match(/\\b[a-z0-9]{4,}\\b/g) || []);
-      const bWords = new Set(b.text.toLowerCase().match(/\\b[a-z0-9]{4,}\\b/g) || []);
+      const aWords = new Set(a.text.toLowerCase().match(/\b[a-z0-9]{4,}\b/g) || []);
+      const bWords = new Set(b.text.toLowerCase().match(/\b[a-z0-9]{4,}\b/g) || []);
       const common = [...aWords].filter(w=>bWords.has(w));
       const onlyA = [...aWords].filter(w=>!bWords.has(w)).slice(0,35);
       const onlyB = [...bWords].filter(w=>!aWords.has(w)).slice(0,35);
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       if (!question) return NextResponse.json({ error: "Enter a question about the PDF." }, { status: 400 });
       const queryTerms = (question.toLowerCase().match(/[a-z0-9]{3,}/g) || []).filter(w=>!["what","when","where","which","does","this","that","with","from","have","about","tell","please","could","would"].includes(w));
       const matches = sentencesOf(doc.text).map((sentence,index)=>({sentence,index,score:queryTerms.reduce((n,w)=>n+(sentence.toLowerCase().includes(w)?1:0),0)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,5);
-      return NextResponse.json({ action, document:doc.name, answer:matches.length ? matches.map(x=>x.sentence).join("\\n\\n") : "I couldn't find a clear passage matching that question in the selectable text of this PDF. Try using the document's own names or terms in your question.", matches:matches.length, disclaimer:"Answers currently use keyword-based retrieval from extracted PDF text. A connected language model and page-level citations are planned for a later stage." });
+      return NextResponse.json({ action, document:doc.name, answer:matches.length ? matches.map(x=>x.sentence).join("\n\n") : "I couldn't find a clear passage matching that question in the selectable text of this PDF. Try using the document's own names or terms in your question.", matches:matches.length, disclaimer:"Answers currently use keyword-based retrieval from extracted PDF text. A connected language model and page-level citations are planned for a later stage." });
     }
     return NextResponse.json({ action:"analyze", document:{name:doc.name,pages:doc.pages}, ...summarize(doc.text), disclaimer:"This is an extractive first-pass analysis, not an AI-generated interpretation. Scanned PDFs require OCR, which is not connected yet." });
   } catch (error) {
