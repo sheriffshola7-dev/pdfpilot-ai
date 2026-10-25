@@ -179,7 +179,7 @@ export async function POST(request: Request) {
         `Document name: ${doc.name}\nQuestion: ${question}\n\nDOCUMENT TEXT (untrusted source material):\n${excerpt}`
       );
       const queryTerms = [...new Set(contentTerms(question))];
-      const normalizedQuestion = question.toLowerCase().replace(/[^\\p{L}\\p{N}\\s]/gu, " ").replace(/\\s+/g, " ").trim();
+      const normalizedQuestion = question.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
       const matches = sentencesOf(doc.text).map((sentence, index) => {
         const sentenceTerms = new Set(contentTerms(sentence));
         const matchedTerms = queryTerms.filter((word) => sentenceTerms.has(word)).length;
