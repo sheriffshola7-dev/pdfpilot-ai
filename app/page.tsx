@@ -27,14 +27,39 @@ export default function Home() {
   const [files, setFiles] = useState<File[]>([]);
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [chatQuestion, setChatQuestion] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   function selectTool(next: ToolKey) {
     setTool(next);
     setFiles([]);
     setNotice("");
+    setResult(null);
+    setChatQuestion("");
     setActive(next);
   }
+  async function runProcess() {
+    if (tool === "Chat with PDF" && !chatQuestion.trim()) { setNotice("Enter a question about your PDF first."); return; }
+    if (!files.length || (tool === "Compare documents" && files.length < 2)) return;
+    setProcessing(true); setNotice(""); setResult(null);
+    try {
+      const form = new FormData();
+      if (tool === "Compare documents") {
+        form.append("action", "compare"); form.append("file1", files[0]); form.append("file2", files[1]);
+      } else {
+        form.append("action", tool === "Chat with PDF" ? "chat" : "analyze"); form.append("file", files[0]);
+        if (tool === "Chat with PDF") form.append("question", chatQuestion);
+      }
+      const response = await fetch("/api/process", { method: "POST", body: form });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Processing failed.");
+      setResult(data);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Could not process this PDF. Please try again."); }
+    finally { setProcessing(false); }
+  }
+
   function onFiles(list: FileList | null) {
     if (!list) return;
     const pdfs = Array.from(list).filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
@@ -94,8 +119,17 @@ export default function Home() {
                 <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple={tool === "Compare documents"} hidden onChange={(e) => onFiles(e.target.files)}/>
                 {files.length > 0 && <div className="selected-files">{files.map((f,i)=><div className="selected-file" key={f.name+i}><FileText size={18}/><div><strong>{f.name}</strong><small>{(f.size/1024/1024).toFixed(2)} MB</small></div><button className="icon-button" onClick={() => setFiles(files.filter((_,j)=>j!==i))} aria-label="Remove file"><X size={16}/></button></div>)}</div>}
                 {notice && <p className="inline-warning">{notice}</p>}
-                <button className="primary-button analyze-button" disabled={files.length < (tool === "Compare documents" ? 2 : 1)} onClick={() => setNotice("Upload selection works. AI processing will be connected after secure backend setup.")}>{tool === "Compare documents" ? "Compare documents" : tool === "Chat with PDF" ? "Start chatting" : "Analyze document"} <ArrowRight size={17}/></button>
-                <p className="privacy-note"><ShieldCheck size={14}/> Private by design. Your documents are not shared with other users.</p>
+                {tool === "Chat with PDF" && files.length > 0 && <label className="question-field"><span>What would you like to know?</span><textarea value={chatQuestion} onChange={(e) => setChatQuestion(e.target.value)} placeholder="Ask a question using terms from your document..." rows={3}/></label>}
+                <button className="primary-button analyze-button" disabled={processing || files.length < (tool === "Compare documents" ? 2 : 1) || (tool === "Chat with PDF" && !chatQuestion.trim())} onClick={runProcess}>{processing ? "Processing PDF..." : tool === "Compare documents" ? "Compare documents" : tool === "Chat with PDF" ? "Ask question" : "Analyze document"} {!processing && <ArrowRight size={17}/>}</button>
+                {result && <div className="result-panel">
+                  <div className="result-heading"><div><span className="result-kicker"><Sparkles size={13}/> PROCESSING RESULT</span><h2>{tool === "Compare documents" ? "Document comparison" : tool === "Chat with PDF" ? "Answer from your PDF" : "Document insights"}</h2></div><button className="text-button" onClick={() => {const blob=new Blob([JSON.stringify(result,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="pdfpilot-result.json";a.click();URL.revokeObjectURL(url)}}>Export result ↓</button></div>
+                  {result.document && <p className="result-meta">{result.document.name}{result.document.pages ? " · "+result.document.pages+" pages" : ""}{result.wordCount ? " · "+result.wordCount.toLocaleString()+" words" : ""}</p>}
+                  {result.summary && <><h3>Summary highlights</h3><ul>{result.summary.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul>{result.keyFindings?.length>0&&<><h3>Key findings</h3><ul>{result.keyFindings.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{(result.dates?.length>0||result.amounts?.length>0)&&<div className="extracted-grid">{result.dates?.length>0&&<div><h3>Dates found</h3><p>{result.dates.join(" · ")}</p></div>}{result.amounts?.length>0&&<div><h3>Amounts / percentages</h3><p>{result.amounts.join(" · ")}</p></div>}</div>}</>}
+                  {result.answer && <p className="answer-text">{result.answer}</p>}
+                  {result.documents && <><div className="compare-stats"><div><small>Vocabulary overlap</small><strong>{result.overlap}%</strong></div>{result.documents.map((d:{name:string;pages:number;words:number})=><div key={d.name}><small>{d.name}</small><strong>{d.pages} pages · {d.words} terms</strong></div>)}</div><div className="extracted-grid"><div><h3>Terms only in first PDF</h3><p>{result.uniqueToFirst?.join(", ") || "None found"}</p></div><div><h3>Terms only in second PDF</h3><p>{result.uniqueToSecond?.join(", ") || "None found"}</p></div></div><p className="result-meta">{result.note}</p></>}
+                  {result.disclaimer && <p className="result-disclaimer">{result.disclaimer}</p>}
+                </div>}
+                <p className="privacy-note"><ShieldCheck size={14}/> PDFs are processed in memory for this request and are not saved to a document library yet.</p>
               </div>
               <div className="below-upload"><div><Sparkles size={18}/><strong>What you'll get</strong></div><p>{tool === "Compare documents" ? "A structured differences report, matching sections, changed values, and important clauses." : tool === "Chat with PDF" ? "Document-grounded answers, follow-up questions, and relevant page references." : "An executive summary, key findings, extracted facts, important dates, and suggested next steps."}</p></div>
             </section>
