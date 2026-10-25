@@ -29,19 +29,27 @@ async function readPdf(file: File) {
 async function askModel(system: string, user: string) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user }
-      ]
-    }),
-    signal: AbortSignal.timeout(25000)
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        temperature: 0.2,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user }
+        ]
+      }),
+      signal: AbortSignal.timeout(25000)
+    });
+  } catch (error) {
+    if (error instanceof Error && (error.name === "TimeoutError" || /timed out|timeout/i.test(error.message))) {
+      throw new Error("The AI service request timed out. Please try again.");
+    }
+    throw new Error("The AI service is temporarily unavailable. Please try again shortly.");
+  }
   if (!response.ok) {
     // Keep provider response bodies and internal configuration details out of user-facing errors.
     await response.text().catch(() => "");
@@ -56,7 +64,12 @@ async function askModel(system: string, user: string) {
     }
     throw new Error("The AI service could not complete this request. Please try again.");
   }
-  const payload = await response.json();
+  let payload: { choices?: Array<{ message?: { content?: unknown } }> };
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error("The AI service returned an unreadable response. Please try again.");
+  }
   return String(payload.choices?.[0]?.message?.content || "").trim() || null;
 }
 
