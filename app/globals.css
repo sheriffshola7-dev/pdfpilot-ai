@@ -104,3 +104,27 @@ html[data-theme="dark"] .page-footer{color:#aebeb3!important}
   .theme-toggle{flex-shrink:0}
   .search-box{width:min(42vw,220px)}
 }
+
+
+.settings-page{max-width:900px;margin:0 auto;padding:8px 0 40px}
+.settings-page>h1{font:800 30px/1.2 Manrope,sans-serif;letter-spacing:-1px;margin:0;color:var(--ink)}
+.settings-intro{font-size:12px;color:var(--muted);margin:10px 0 25px}
+.settings-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:0 20px}
+.settings-item{display:flex;align-items:center;gap:14px;padding:19px 0;border-bottom:1px solid var(--line)}
+.settings-item:last-child{border-bottom:0}
+.settings-item-icon{width:42px;height:42px;border-radius:11px;background:var(--green-pale);color:var(--green);display:grid;place-items:center;flex-shrink:0}
+.settings-item-copy{flex:1;min-width:0}
+.settings-item-copy strong{font:750 13px Manrope,sans-serif;color:var(--ink)}
+.settings-item-copy p{font-size:11px;line-height:1.6;color:var(--muted);margin:6px 0 0}
+.theme-switch-button{border:1px solid #b9dfc6;background:#eaf7ef;color:#176c43;border-radius:9px;padding:10px 12px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;font-weight:700;white-space:nowrap}
+.settings-status{border-radius:7px;padding:7px 9px;background:#f1f5f2;color:#68786d;font-size:10px;font-weight:600;white-space:nowrap}
+.settings-back{margin-top:20px}
+html[data-theme="dark"] .settings-page>h1{color:#edf5ef}
+html[data-theme="dark"] .settings-card{background:#17241c;border-color:#2b4033}
+html[data-theme="dark"] .settings-item{border-bottom-color:#2b4033}
+html[data-theme="dark"] .settings-item-copy strong{color:#edf5ef}
+html[data-theme="dark"] .settings-item-copy p{color:#b4c4b9}
+html[data-theme="dark"] .settings-item-icon{background:#1c3b29;color:#9ae9b4}
+html[data-theme="dark"] .theme-switch-button{background:#1c3b29;border-color:#3b7650;color:#a3efbb}
+html[data-theme="dark"] .settings-status{background:#26362b;color:#c6d8ca}
+@media(max-width:640px){.settings-item{align-items:flex-start;flex-wrap:wrap}.settings-item-copy{flex-basis:calc(100% - 60px)}.theme-switch-button,.settings-status{margin-left:56px}.settings-page>h1{font-size:26px}}
