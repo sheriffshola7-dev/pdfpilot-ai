@@ -80,7 +80,7 @@ export default function Home() {
   function onFiles(list: FileList | null) {
     if (!list) return;
     const pdfs = Array.from(list).filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
-    setFiles((old) => [...old, ...pdfs].slice(0, tool === "Compare documents" ? 4 : 1));
+    setFiles((old) => [...old, ...pdfs].slice(0, tool === "Compare documents" ? 2 : 1));
     setNotice(pdfs.length ? "" : "Please choose a PDF file.");
   }
 
