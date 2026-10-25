@@ -40,7 +40,7 @@ export default function Home() {
   const [result, setResult] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [savedInsights, setSavedInsights] = useState<any[]>([]);
-  useEffect(() => { try { setHistory(JSON.parse(localStorage.getItem("pdfpilot-history") || "[]")); setSavedInsights(JSON.parse(localStorage.getItem("pdfpilot-insights") || "[]")); } catch { setHistory([]); setSavedInsights([]); } }, []);
+  useEffect(() => { try { const storedHistory = JSON.parse(localStorage.getItem("pdfpilot-history") || "[]"); const storedInsights = JSON.parse(localStorage.getItem("pdfpilot-insights") || "[]"); setHistory(Array.isArray(storedHistory) ? storedHistory : []); setSavedInsights(Array.isArray(storedInsights) ? storedInsights : []); } catch { setHistory([]); setSavedInsights([]); } }, []);
   function persistLocal(key: string, value: unknown) {
     try { localStorage.setItem(key, JSON.stringify(value)); return true; }
     catch { setNotice("Browser storage is full or unavailable. This result is still visible, but may not be saved after you leave this page."); return false; }
@@ -52,8 +52,9 @@ export default function Home() {
   function saveInsight() {
     if (!result) return;
     const entry={id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,tool:tool || "Analysis",title:result.document?.name || result.documents?.map((d:{name:string})=>d.name).join(" ↔ ") || "Saved insight",createdAt:new Date().toISOString(),summary:result.summary?.slice(0,3) || (result.answer ? [result.answer] : result.keyDifferences?.slice(0,3) || [result.overview || "Document insight"])};
-    setSavedInsights(old=>{const next=[entry,...old].slice(0,50);persistLocal("pdfpilot-insights", next);return next;});
-    setNotice("Insight saved on this device.");
+    const saved = persistLocal("pdfpilot-insights", [...savedInsights.slice(0,49).map((item) => item), entry]);
+    setSavedInsights(old=>[entry,...old].slice(0,50));
+    if (saved) setNotice("Insight saved on this device.");
   }
   function removeHistory(id:string) { setHistory(old=>{const next=old.filter(item=>item.id!==id);persistLocal("pdfpilot-history", next);return next;}); }
   const [chatQuestion, setChatQuestion] = useState("");
