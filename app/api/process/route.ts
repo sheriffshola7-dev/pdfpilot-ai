@@ -15,7 +15,12 @@ async function readPdf(file: File) {
     throw new Error("Only PDF files are supported.");
   }
   const buffer = Buffer.from(await file.arrayBuffer());
-  const parsed = await pdfParse(buffer);
+  let parsed: { text?: string; numpages?: number };
+  try {
+    parsed = await pdfParse(buffer);
+  } catch {
+    throw new Error("This PDF could not be read. It may be damaged, password-protected, or not a valid PDF.");
+  }
   const text = (parsed.text || "").replace(/[\t ]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   if (!text) throw new Error("No selectable text was found. This may be a scanned PDF; OCR support is not connected yet.");
   return { name: file.name, pages: parsed.numpages || 0, text: text.slice(0, MAX_TEXT_CHARS), truncated: text.length > MAX_TEXT_CHARS };
