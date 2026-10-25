@@ -19,7 +19,8 @@ export default function Home() {
   const [active, setActive] = useState("Overview");
   const [theme, setTheme] = useState<"light" | "dark">("light");
   useEffect(() => {
-    const saved = window.localStorage.getItem("pdfpilot-theme");
+    let saved: string | null = null;
+    try { saved = window.localStorage.getItem("pdfpilot-theme"); } catch { /* Storage may be disabled by the browser. */ }
     const preferred = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
     const initial = saved === "dark" || saved === "light" ? saved : preferred ? "dark" : "light";
     setTheme(initial);
@@ -29,7 +30,11 @@ export default function Home() {
     const nextTheme = theme === "dark" ? "light" : "dark";
     setTheme(nextTheme);
     document.documentElement.dataset.theme = nextTheme;
-    window.localStorage.setItem("pdfpilot-theme", nextTheme);
+    try {
+      window.localStorage.setItem("pdfpilot-theme", nextTheme);
+    } catch {
+      setNotice("Theme changed for this session, but your browser could not save the preference.");
+    }
   }
   const [tool, setTool] = useState<ToolKey | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
