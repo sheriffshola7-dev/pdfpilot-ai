@@ -195,7 +195,7 @@ export default function Home() {
                 </div>}
                 <p className="privacy-note"><ShieldCheck size={14}/> PDFs are processed for this request and are not saved as files by this app. When AI is configured, extracted text is sent to the AI provider to generate results. History and saved insights stay in this browser only.</p>
               </div>
-              <div className="below-upload"><div><Sparkles size={18}/><strong>What you'll get</strong></div><p>{tool === "Compare documents" ? "A comparison of extracted content words, plus AI-assisted differences and shared points when server-side AI is configured. Always verify against the original PDFs." : tool === "Chat with PDF" ? "Answers grounded in extracted document text. Page-level citations are not available yet, so check important answers against the original PDF." : "An extractive summary, key findings, detected dates and amounts, and AI-assisted risks or action items when server-side AI is configured."}</p></div>
+              <div className="below-upload"><div><Sparkles size={18}/><strong>What you&apos;ll get</strong></div><p>{tool === "Compare documents" ? "A comparison of extracted content words, plus AI-assisted differences and shared points when server-side AI is configured. Always verify against the original PDFs." : tool === "Chat with PDF" ? "Answers grounded in extracted document text. Page-level citations are not available yet, so check important answers against the original PDF." : "An extractive summary, key findings, detected dates and amounts, and AI-assisted risks or action items when server-side AI is configured."}</p></div>
             </section>
           ) : active === "Overview" ? (
             <>
