@@ -1,11 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, BookOpenText,
   Check, ChevronDown, CircleHelp, Clock3, FileCheck2, FileSearch, FileText,
   Files, FolderOpen, LayoutDashboard, Menu, MessageSquareText, Plus, Search,
-  Settings2, ShieldCheck, Sparkles, UploadCloud, X, Zap
+  Settings2, ShieldCheck, Sparkles, UploadCloud, X, Zap, Moon, Sun
 } from "lucide-react";
 
 type ToolKey = "Analyze PDF" | "Compare documents" | "Chat with PDF";
@@ -22,6 +22,20 @@ const tools: { title: ToolKey; description: string; icon: typeof FileSearch; ton
 
 export default function Home() {
   const [active, setActive] = useState("Overview");
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  useEffect(() => {
+    const saved = window.localStorage.getItem("pdfpilot-theme");
+    const preferred = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+    const initial = saved === "dark" || saved === "light" ? saved : preferred ? "dark" : "light";
+    setTheme(initial);
+    document.documentElement.dataset.theme = initial;
+  }, []);
+  function toggleTheme() {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    window.localStorage.setItem("pdfpilot-theme", nextTheme);
+  }
   const [tool, setTool] = useState<ToolKey | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -104,7 +118,7 @@ export default function Home() {
         <header className="topbar">
           <button className="icon-button mobile-menu-button" onClick={() => setMobileMenu(true)} aria-label="Open menu"><Menu size={20}/></button>
           <div className="breadcrumbs">Workspace <span>/</span> <strong>{tool ?? active}</strong></div>
-          <div className="top-actions"><label className="search-box"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search documents..." /><kbd>⌘ K</kbd></label><button className="icon-button notification-button" aria-label="Notifications" onClick={() => setNotice("You're all caught up.")}><Bell size={18}/><i/></button><div className="top-avatar">SC</div></div>
+          <div className="top-actions"><label className="search-box"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search documents..." /><kbd>⌘ K</kbd></label><button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>{theme === "dark" ? <Sun size={18}/> : <Moon size={18}/>}</button><button className="icon-button notification-button" aria-label="Notifications" onClick={() => setNotice("You're all caught up.")}><Bell size={18}/><i/></button><div className="top-avatar">SC</div></div>
         </header>
 
         <div className="page-content">
