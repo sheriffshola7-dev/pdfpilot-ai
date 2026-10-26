@@ -11,6 +11,70 @@ import {
 } from "lucide-react";
 
 type ToolKey = "Analyze PDF" | "Compare documents" | "Chat with PDF";
+
+type OcrRuntime = {
+  pdfjsLib?: any;
+  Tesseract?: any;
+};
+declare global { interface Window { pdfjsLib?: any; Tesseract?: any; } }
+
+function loadScript(src: string) {
+  return new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[data-pdfpilot-src="${src}"]`);
+    if (existing?.dataset.loaded === "true") { resolve(); return; }
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("OCR libraries could not be loaded. Check your internet connection and retry.")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.dataset.pdfpilotSrc = src;
+    script.onload = () => { script.dataset.loaded = "true"; resolve(); };
+    script.onerror = () => { script.remove(); reject(new Error("OCR libraries could not be loaded. Check your internet connection and retry.")); };
+    document.head.appendChild(script);
+  });
+}
+
+async function recognizeScannedPdf(file: File, onProgress: (message: string) => void) {
+  if (file.size > 12 * 1024 * 1024) throw new Error("For scanned-PDF OCR, start with a file under 12 MB to keep processing manageable on mobile.");
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+  await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+  const pdfjs = window.pdfjsLib;
+  const tesseract = window.Tesseract;
+  if (!pdfjs || !tesseract) throw new Error("OCR could not start because a required library did not load.");
+  pdfjs.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer(), useWorkerFetch: true }).promise;
+  if (pdf.numPages > 8) throw new Error("Scanned-PDF OCR currently supports up to 8 pages per file. Split larger scans into smaller PDFs and try again.");
+  const worker = await tesseract.createWorker("eng", 1);
+  const chunks: string[] = [];
+  try {
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      onProgress(`OCR is reading page ${pageNumber} of ${pdf.numPages}… keep this tab open.`);
+      const page = await pdf.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 1.5 });
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Your browser could not prepare a page for OCR.");
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      await page.render({ canvasContext: context, viewport }).promise;
+      const recognized = await worker.recognize(canvas);
+      const text = String(recognized.data?.text || "").trim();
+      if (text) chunks.push(`[Page ${pageNumber}]\n${text}`);
+      canvas.width = 0; canvas.height = 0;
+      page.cleanup();
+    }
+  } finally {
+    await worker.terminate();
+    pdf.destroy();
+  }
+  const text = chunks.join("\n\n").trim();
+  if (text.length < 10) throw new Error("OCR could not recognize readable text in this scan. Try a clearer, higher-resolution PDF.");
+  return text.slice(0, 120000);
+}
+
 const tools: { title: ToolKey; description: string; icon: typeof FileSearch; tone: string }[] = [
   { title: "Analyze PDF", description: "Get clear summaries, insights, and key takeaways.", icon: FileSearch, tone: "green" },
   { title: "Compare documents", description: "Compare two PDFs and review key differences.", icon: Files, tone: "purple" },
@@ -214,29 +278,48 @@ export default function Home() {
     if (tool === "Chat with PDF" && !chatQuestion.trim()) { setNotice("Enter a question about your PDF first."); return; }
     if (!files.length || (tool === "Compare documents" && files.length < 2)) return;
     setProcessing(true); setNotice(""); setResult(null);
-    try {
+    const action = tool === "Compare documents" ? "compare" : tool === "Chat with PDF" ? "chat" : "analyze";
+    const makeForm = (ocrTexts?: string[]) => {
       const form = new FormData();
-      if (tool === "Compare documents") {
-        form.append("action", "compare"); form.append("file1", files[0]); form.append("file2", files[1]);
+      form.append("action", action);
+      if (action === "compare") {
+        form.append("file1", files[0]); form.append("file2", files[1]);
+        if (ocrTexts?.[0]) form.append("ocrText1", ocrTexts[0]);
+        if (ocrTexts?.[1]) form.append("ocrText2", ocrTexts[1]);
       } else {
-        form.append("action", tool === "Chat with PDF" ? "chat" : "analyze"); form.append("file", files[0]);
-        if (tool === "Chat with PDF") form.append("question", chatQuestion);
+        form.append("file", files[0]);
+        if (ocrTexts?.[0]) form.append("ocrText", ocrTexts[0]);
+        if (action === "chat") form.append("question", chatQuestion);
       }
-      const response = await fetch("/api/process", { method: "POST", body: form, signal: AbortSignal.timeout(35000) });
+      return form;
+    };
+    try {
+      let response = await fetch("/api/process", { method: "POST", body: makeForm(), signal: AbortSignal.timeout(35000) });
+      let data = await response.json().catch(() => ({}));
+      const needsOcr = !response.ok && typeof data.error === "string" && data.error.includes("No selectable text was found");
+      if (needsOcr) {
+        const scannedFiles = action === "compare" ? files.slice(0, 2) : files.slice(0, 1);
+        const ocrTexts: string[] = [];
+        for (let i = 0; i < scannedFiles.length; i++) {
+          setNotice(`Preparing on-device OCR for ${scannedFiles[i].name}…`);
+          ocrTexts.push(await recognizeScannedPdf(scannedFiles[i], setNotice));
+        }
+        setNotice("Sending recognized text for PDF analysis…");
+        response = await fetch("/api/process", { method: "POST", body: makeForm(ocrTexts), signal: AbortSignal.timeout(35000) });
+        data = await response.json().catch(() => ({}));
+      }
       const contentType = response.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
-        throw new Error(response.ok
-          ? "The server returned an unexpected response. Please try again."
-          : "The PDF service is temporarily unavailable. Please try again shortly.");
+        throw new Error(response.ok ? "The server returned an unexpected response. Please try again." : "The PDF service is temporarily unavailable. Please try again shortly.");
       }
-      const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Processing failed.");
+      if (needsOcr) data.ocrUsed = true;
       setResult(data);
       saveResultToHistory(data, tool as ToolKey);
+      setNotice(needsOcr ? "OCR completed. Please review recognized text carefully; OCR can make mistakes." : "");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not process this PDF. Please try again."); }
     finally { setProcessing(false); }
   }
-
   function onFiles(list: FileList | null) {
     if (!list) return;
     const picked = Array.from(list);
