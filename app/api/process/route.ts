@@ -8,7 +8,7 @@ const MAX_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT_CHARS = 120_000;
 const MAX_QUESTION_CHARS = 1_500;
 
-async function readPdf(file: File) {
+async function readPdf(file: File, ocrText?: string) {
   if (!file || file.size === 0) throw new Error("Please select a non-empty PDF.");
   if (file.size > MAX_BYTES) throw new Error("Each PDF must be 20 MB or smaller.");
   if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
@@ -140,7 +140,7 @@ export async function POST(request: Request) {
       const first = form.get("file1");
       const second = form.get("file2");
       if (!(first instanceof File) || !(second instanceof File)) return NextResponse.json({ error: "Choose two PDFs to compare." }, { status: 400 });
-      const [a,b] = await Promise.all([readPdf(first), readPdf(second)]);
+      const [a,b] = await Promise.all([readPdf(first, String(form.get("ocrText1") || "")), readPdf(second, String(form.get("ocrText2") || ""))]);
       const aWords = new Set(contentTerms(a.text));
       const bWords = new Set(contentTerms(b.text));
       const common = [...aWords].filter(w=>bWords.has(w)).sort();
@@ -157,7 +157,7 @@ export async function POST(request: Request) {
     }
     const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "Choose a PDF first." }, { status: 400 });
-    const doc = await readPdf(file);
+    const doc = await readPdf(file, String(form.get("ocrText") || ""));
     if (action === "chat") {
       const question = String(form.get("question") || "").trim();
       if (!question) return NextResponse.json({ error: "Enter a question about the PDF." }, { status: 400 });
@@ -175,7 +175,7 @@ export async function POST(request: Request) {
         const lengthPenalty = sentence.length > 420 ? 0.8 : sentence.length < 70 ? 0.85 : 1;
         return { sentence, index, score: (matchedTerms + coverage) * lengthPenalty };
       }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score || a.index-b.index).slice(0,5);
-      return NextResponse.json({ action, document:doc.name, truncated: Boolean(doc.truncated), answer:aiAnswer || (matches.length ? matches.map(x=>x.sentence).join("\n\n") : "I couldn't find a clear passage matching that question in the selectable text of this PDF. Try using the document's own names or terms in your question."), matches:matches.length, aiEnabled:Boolean(aiAnswer), disclaimer:aiAnswer ? "AI-generated answer based on extracted document text. Check important claims against the original PDF; page citations are not available yet." : "Keyword-based retrieval is active. Configure AI_API_KEY and optionally AI_BASE_URL and AI_MODEL on the server to enable AI-generated answers." });
+      return NextResponse.json({ action, document:doc.name, ocrUsed: Boolean(doc.ocrUsed), truncated: Boolean(doc.truncated), answer:aiAnswer || (matches.length ? matches.map(x=>x.sentence).join("\n\n") : "I couldn't find a clear passage matching that question in the selectable text of this PDF. Try using the document's own names or terms in your question."), matches:matches.length, aiEnabled:Boolean(aiAnswer), disclaimer:aiAnswer ? "AI-generated answer based on extracted document text. Check important claims against the original PDF; page citations are not available yet." : "Keyword-based retrieval is active. Configure AI_API_KEY and optionally AI_BASE_URL and AI_MODEL on the server to enable AI-generated answers." });
     }
     const baseline = summarize(doc.text);
     const aiText = await askModel(
@@ -184,7 +184,7 @@ export async function POST(request: Request) {
     );
     const parsedAI = aiText ? safeJson(aiText) : null;
     const aiResult = parsedAI ? { summary: stringList(parsedAI.summary), keyFindings: stringList(parsedAI.keyFindings, 8), risks: stringList(parsedAI.risks, 8), actionItems: stringList(parsedAI.actionItems, 8) } : null;
-    return NextResponse.json({ action:"analyze", document:{name:doc.name,pages:doc.pages}, ...baseline, ...(aiResult || {}), aiEnabled:Boolean(aiResult), truncated: Boolean(doc.truncated), disclaimer:aiResult ? "AI-assisted analysis based on extracted PDF text. Verify important details against the source document; page-level citations are not available yet." : "Extractive first-pass analysis is active. Configure AI_API_KEY and optionally AI_BASE_URL and AI_MODEL on the server to enable AI-assisted analysis. Scanned PDFs require OCR, which is not connected yet." });
+    return NextResponse.json({ action:"analyze", document:{name:doc.name,pages:doc.pages}, ocrUsed: Boolean(doc.ocrUsed), ...baseline, ...(aiResult || {}), aiEnabled:Boolean(aiResult), truncated: Boolean(doc.truncated), disclaimer:aiResult ? "AI-assisted analysis based on extracted PDF text. Verify important details against the source document; page-level citations are not available yet." : "Extractive first-pass analysis is active. Configure AI_API_KEY and optionally AI_BASE_URL and AI_MODEL on the server to enable AI-assisted analysis. Scanned PDFs require OCR, which is not connected yet." });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to process this PDF.";
     const status = /20 MB|too large|larger than/i.test(message) ? 413
