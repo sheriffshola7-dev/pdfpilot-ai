@@ -188,7 +188,7 @@ export async function POST(request: Request) {
     );
     const parsedAI = aiText ? safeJson(aiText) : null;
     const aiResult = parsedAI ? { summary: stringList(parsedAI.summary), keyFindings: stringList(parsedAI.keyFindings, 8), risks: stringList(parsedAI.risks, 8), actionItems: stringList(parsedAI.actionItems, 8) } : null;
-    return NextResponse.json({ action:"analyze", document:{name:doc.name,pages:doc.pages}, ...baseline, ...(aiResult || {}), aiEnabled:Boolean(aiResult), truncated: Boolean(doc.truncated), disclaimer:aiResult ? "AI-assisted analysis based on extracted PDF text. Verify important details against the source document; page-level citations are not available yet." : "Extractive first-pass analysis is active. Configure AI_API_KEY and optionally AI_BASE_URL and AI_MODEL on the server to enable AI-assisted analysis. Scanned PDFs require OCR, which is not connected yet." });
+    return NextResponse.json({ action:"analyze", document:{name:doc.name,pages:doc.pages}, ...baseline, ...(aiResult || {}), aiEnabled:Boolean(aiResult), truncated: Boolean(doc.truncated), disclaimer:aiResult ? "AI-assisted analysis based on extracted PDF text. Verify important details against the source document; page-level citations are not available yet." : "Extractive first-pass analysis is active. Configure AI_API_KEY and optionally AI_BASE_URL and AI_MODEL on the server to enable AI-assisted analysis. Scanned PDFs can use browser-based OCR when the browser recognizes text and submits it for processing." });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to process this PDF.";
     const status = /20 MB|too large|larger than/i.test(message) ? 413
