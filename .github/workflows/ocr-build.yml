@@ -1,0 +1,32 @@
+name: OCR feature build check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "lib/**"
+      - "package.json"
+      - ".github/workflows/ocr-build.yml"
+  push:
+    branches: ["feature/ocr-scanned-pdfs-v1"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run production build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_build_check_only
