@@ -65,7 +65,9 @@ async function askModel(system: string, user: string) {
     await response.text().catch(() => "");
     if (response.status === 429) throw new Error("AI usage limit reached. Please try again later.");
     if (response.status === 401 || response.status === 403) {
-      throw new Error("AI service authentication is not configured correctly. Please contact the site administrator.");
+      // A missing, expired, or invalid provider credential must not block core PDF tools.
+      // Fall back to the built-in offline analysis/chat/comparison instead.
+      return null;
     }
     if (response.status >= 500) throw new Error("The AI service is temporarily unavailable. Please try again shortly.");
     throw new Error("The AI service could not complete this request. Please try again.");
