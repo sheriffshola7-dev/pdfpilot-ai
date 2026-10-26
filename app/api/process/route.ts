@@ -23,7 +23,7 @@ async function readPdf(file: File, ocrText = "") {
   }
   const text = (parsed.text || "").replace(/[\t ]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   if (!text) {
-    const recognized = ocrText.replace(/\\s+/g, " ").trim();
+    const recognized = ocrText.replace(/\s+/g, " ").trim();
     if (recognized) return { name: file.name, pages: parsed.numpages || 0, text: recognized.slice(0, MAX_TEXT_CHARS), truncated: recognized.length > MAX_TEXT_CHARS };
     throw new Error("No selectable text was found. This may be a scanned PDF; browser OCR is needed.");
   }
