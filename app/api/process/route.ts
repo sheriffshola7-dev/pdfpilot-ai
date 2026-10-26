@@ -8,7 +8,7 @@ const MAX_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT_CHARS = 120_000;
 const MAX_QUESTION_CHARS = 1_500;
 
-async function readPdf(file: File) {
+async function readPdf(file: File, ocrText = "") {
   if (!file || file.size === 0) throw new Error("Please select a non-empty PDF.");
   if (file.size > MAX_BYTES) throw new Error("Each PDF must be 20 MB or smaller.");
   if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
@@ -22,7 +22,11 @@ async function readPdf(file: File) {
     throw new Error("This PDF could not be read. It may be damaged, password-protected, or not a valid PDF.");
   }
   const text = (parsed.text || "").replace(/[\t ]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-  if (!text) throw new Error("No selectable text was found. This may be a scanned PDF; OCR support is not connected yet.");
+  if (!text) {
+    const recognized = ocrText.replace(/\\s+/g, " ").trim();
+    if (recognized) return { name: file.name, pages: parsed.numpages || 0, text: recognized.slice(0, MAX_TEXT_CHARS), truncated: recognized.length > MAX_TEXT_CHARS };
+    throw new Error("No selectable text was found. This may be a scanned PDF; browser OCR is needed.");
+  }
   return { name: file.name, pages: parsed.numpages || 0, text: text.slice(0, MAX_TEXT_CHARS), truncated: text.length > MAX_TEXT_CHARS };
 }
 
@@ -140,7 +144,7 @@ export async function POST(request: Request) {
       const first = form.get("file1");
       const second = form.get("file2");
       if (!(first instanceof File) || !(second instanceof File)) return NextResponse.json({ error: "Choose two PDFs to compare." }, { status: 400 });
-      const [a,b] = await Promise.all([readPdf(first), readPdf(second)]);
+      const [a,b] = await Promise.all([readPdf(first, String(form.get("ocrText1") || "")), readPdf(second, String(form.get("ocrText2") || ""))]);
       const aWords = new Set(contentTerms(a.text));
       const bWords = new Set(contentTerms(b.text));
       const common = [...aWords].filter(w=>bWords.has(w)).sort();
@@ -157,7 +161,7 @@ export async function POST(request: Request) {
     }
     const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "Choose a PDF first." }, { status: 400 });
-    const doc = await readPdf(file);
+    const doc = await readPdf(file, String(form.get("ocrText") || ""));
     if (action === "chat") {
       const question = String(form.get("question") || "").trim();
       if (!question) return NextResponse.json({ error: "Enter a question about the PDF." }, { status: 400 });
