@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { extractScannedPdfText } from "@/lib/ocr";
 import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, BookOpenText,
   Check, ChevronDown, CircleHelp, Clock3, FileCheck2, FileSearch, FileText,
@@ -222,15 +223,44 @@ export default function Home() {
         form.append("action", tool === "Chat with PDF" ? "chat" : "analyze"); form.append("file", files[0]);
         if (tool === "Chat with PDF") form.append("question", chatQuestion);
       }
-      const response = await fetch("/api/process", { method: "POST", body: form, signal: AbortSignal.timeout(35000) });
-      const contentType = response.headers.get("content-type") || "";
+      let response = await fetch("/api/process", { method: "POST", body: form, signal: AbortSignal.timeout(35000) });
+      let contentType = response.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
         throw new Error(response.ok
           ? "The server returned an unexpected response. Please try again."
           : "The PDF service is temporarily unavailable. Please try again shortly.");
       }
-      const data = await response.json();
+      let data = await response.json();
+      const scannedPdfNeedsOcr = !response.ok && /browser OCR is needed|No selectable text was found/i.test(String(data.error || ""));
+      if (scannedPdfNeedsOcr) {
+        setNotice("Scanned PDF detected. Loading OCR tools and recognizing text in your browser…");
+        if (tool === "Compare documents") {
+          const [firstOcr, secondOcr] = await Promise.all([
+            extractScannedPdfText(files[0], p => setNotice(`OCR document 1: ${p.phase} (${p.percent}%)`)),
+            extractScannedPdfText(files[1], p => setNotice(`OCR document 2: ${p.phase} (${p.percent}%)`)),
+          ]);
+          form.append("ocrText1", firstOcr.text);
+          form.append("ocrText2", secondOcr.text);
+        } else {
+          const ocr = await extractScannedPdfText(files[0], p => setNotice(`OCR: ${p.phase} (${p.percent}%)`));
+          form.append("ocrText", ocr.text);
+        }
+        setNotice("OCR finished. Processing the recognized text…");
+        response = await fetch("/api/process", { method: "POST", body: form, signal: AbortSignal.timeout(35000) });
+        contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(response.ok
+            ? "The server returned an unexpected response. Please try again."
+            : "The PDF service is temporarily unavailable. Please try again shortly.");
+        }
+        data = await response.json();
+      }
       if (!response.ok) throw new Error(data.error || "Processing failed.");
+      if (scannedPdfNeedsOcr) {
+        data.ocrUsed = true;
+        data.ocrNote = "Text was recognized locally in your browser. OCR currently processes the first 8 pages in English; review the original PDF for important details.";
+        if (typeof data.disclaimer === "string") data.disclaimer += " OCR may misread scanned text; verify important details against the original.";
+      }
       setResult(data);
       saveResultToHistory(data, tool as ToolKey);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not process this PDF. Please try again."); }
@@ -373,7 +403,7 @@ export default function Home() {
               <p className="settings-intro">Quick answers for analyzing, comparing, and asking questions about PDFs.</p>
               <div className="help-grid">
                 <article className="help-card"><h2>How do I analyze a PDF?</h2><p>Choose Analyze PDF, select a text-based PDF up to 20 MB, then select Analyze document. If no AI provider key is configured, PDFPilot uses built-in extractive analysis.</p></article>
-                <article className="help-card"><h2>Why is my scanned PDF not working?</h2><p>Scanned pages are images, so text extraction cannot read them yet. OCR is not available in this build. For now, upload a PDF where you can select and copy the text; do not rely on a blank result from a scanned file.</p></article>
+                <article className="help-card"><h2>Why is my scanned PDF not working?</h2><p>Scanned pages are processed with browser-based English OCR when selectable text is missing. OCR runs locally in your browser and currently reads up to the first 8 pages. It can take longer on phones, may need an internet connection to load OCR resources, and can misread low-quality scans; verify important details against the original PDF.</p></article>
                 <article className="help-card"><h2>How does Chat with PDF work?</h2><p>Upload a PDF, enter a question using words from the document, and choose Ask question. Without an AI key, answers use keyword-based passage retrieval and may be incomplete.</p></article>
                 <article className="help-card"><h2>How do I compare two PDFs?</h2><p>Choose Compare documents and add two PDFs. Without AI, results show shared and unique terms; overlap is vocabulary overlap, not semantic similarity.</p></article>
                 <article className="help-card"><h2>Will uploaded files remain after refresh?</h2><p>Uploaded PDF files are not saved in the browser workspace. Choose files again after refresh. Your current section, search, and completed result are restored on this device.</p></article>
