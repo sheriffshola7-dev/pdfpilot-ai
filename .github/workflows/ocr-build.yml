@@ -1,4 +1,5 @@
 name: OCR feature build check
+# Build validation for the scanned-PDF OCR branch.
 
 on:
   pull_request:
