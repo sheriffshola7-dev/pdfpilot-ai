@@ -323,3 +323,18 @@ html[data-theme="dark"] .notification-popover{background:#17241c;border-color:#3
 html[data-theme="dark"] .notification-popover-head,html[data-theme="dark"] .notification-entry{border-color:#354b3b}
 html[data-theme="dark"] .notification-entry:hover{background:#203a2b}
 html[data-theme="dark"] .notification-view-all{background:#203a2b;color:#a8edbf}
+
+
+/* Deep reports should remain readable and scroll independently of the page. */
+.result-panel:has([data-analysis-depth="deep"]) {
+  max-height: 76vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.result-panel [data-analysis-depth="deep"] { scroll-margin-top: 12px; }
+.refresh-result-button { background: #eaf7ef !important; color: #176c43 !important; border-color: #bfe3cb !important; }
+html[data-theme="dark"] .refresh-result-button { background: #1d3b29 !important; color: #a7efbd !important; border-color: #42654d !important; }
+html[data-theme="dark"] .analysis-mode-field { background: #17241c; border-color: #2b4033; color: #edf5ef; }
+html[data-theme="dark"] .analysis-mode-option { background: #111c15; border-color: #344b3b; color: #edf5ef; }
+html[data-theme="dark"] .analysis-mode-option small { color: #b4c4b9; }
