@@ -30,6 +30,7 @@ export default function Home() {
   const [authMessage, setAuthMessage] = useState("");
   const [active, setActive] = useState("Overview");
   const [workspaceRestored, setWorkspaceRestored] = useState(false);
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   useEffect(() => {
     let saved: string | null = null;
@@ -329,7 +330,13 @@ export default function Home() {
           <div><div className="brand-name">PDFPilot <span>AI</span></div><div className="brand-by">BY SHORLAH CLOUD</div></div>
           <button className="icon-button mobile-close" onClick={() => setMobileMenu(false)} aria-label="Close menu"><X size={19}/></button>
         </div>
-        <button className="workspace-switch"><div className="workspace-icon">S</div><div className="workspace-copy"><strong>Personal workspace</strong><small>Free plan</small></div><ChevronDown size={16}/></button>
+        <button className={workspaceMenuOpen ? "workspace-switch workspace-switch-open" : "workspace-switch"} onClick={() => setWorkspaceMenuOpen(open => !open)} aria-expanded={workspaceMenuOpen} aria-label="Open workspace menu"><div className="workspace-icon">S</div><div className="workspace-copy"><strong>Personal workspace</strong><small>Free plan</small></div><ChevronDown size={16}/></button>
+        {workspaceMenuOpen && <div className="workspace-menu">
+          <div className="workspace-menu-heading"><strong>Personal workspace</strong><span>Free plan</span></div>
+          <p>Your current workspace for PDF analysis and saved insights.</p>
+          <div className="workspace-menu-usage"><span>Processed items</span><strong>{history.length}</strong></div>
+          <button onClick={() => { setActive("Settings"); setTool(null); setWorkspaceMenuOpen(false); setMobileMenu(false); }}>Workspace settings <ArrowRight size={15}/></button>
+        </div>}
         <div className="nav-caption">WORKSPACE</div>
         <nav className="main-nav">
           {navItems.map(({label, icon: Icon}) => <button key={label} className={`nav-item ${active === label ? "nav-active" : ""}`} onClick={() => { setMobileMenu(false); if (label === "Analyze PDF" || label === "Compare documents" || label === "Chat with PDF") selectTool(label as ToolKey); else { setActive(label); setTool(null); } }}><Icon size={18}/><span>{label}</span>{label === "My documents" && <span className="nav-count">{history.length}</span>}</button>)}
