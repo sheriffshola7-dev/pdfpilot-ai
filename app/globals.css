@@ -325,12 +325,14 @@ html[data-theme="dark"] .notification-entry:hover{background:#203a2b}
 html[data-theme="dark"] .notification-view-all{background:#203a2b;color:#a8edbf}
 
 
-/* Deep reports should remain readable and scroll independently of the page. */
-.result-panel:has([data-analysis-depth="deep"]) {
+/* Every generated report scrolls inside its own panel, regardless of tool or analysis mode. */
+.result-panel {
   max-height: 76vh;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 .result-panel [data-analysis-depth="deep"] { scroll-margin-top: 12px; }
 .refresh-result-button { background: #eaf7ef !important; color: #176c43 !important; border-color: #bfe3cb !important; }
