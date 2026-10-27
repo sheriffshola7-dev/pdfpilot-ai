@@ -236,3 +236,32 @@ html[data-theme="dark"] .auth-shell{background:radial-gradient(circle at top rig
   .topbar .top-actions { gap: 8px; }
   .topbar .top-actions .search-box { min-height: 46px; }
 }
+
+
+/* Dark-mode contrast fix for generated answers and question inputs. */
+html[data-theme="dark"] .answer-text {
+  background: #101914 !important;
+  color: #edf5ef !important;
+  border-color: #354b3b !important;
+}
+html[data-theme="dark"] .question-field span {
+  color: #e4efe7 !important;
+}
+html[data-theme="dark"] .question-field textarea {
+  background: #101914 !important;
+  color: #edf5ef !important;
+  border-color: #354b3b !important;
+}
+html[data-theme="dark"] .question-field textarea::placeholder {
+  color: #a9b9ad !important;
+}
+html[data-theme="dark"] .result-panel .result-meta,
+html[data-theme="dark"] .result-panel .result-disclaimer {
+  color: #b8c9bd !important;
+  border-top-color: #354b3b !important;
+}
+html[data-theme="dark"] .result-export-actions .text-button {
+  background: #203329 !important;
+  color: #dff5e6 !important;
+  border-color: #3b5845 !important;
+}
