@@ -53,6 +53,8 @@ async function askModel(system: string, user: string) {
       body: JSON.stringify({
         model,
         temperature: 0.2,
+        // Allow enough output for structured, in-depth PDF analysis.
+        max_tokens: 5000,
         messages: [
           { role: "system", content: system },
           { role: "user", content: user }
