@@ -18,6 +18,52 @@ const tools: { title: ToolKey; description: string; icon: typeof FileSearch; ton
   { title: "Chat with PDF", description: "Ask questions and get answers grounded in your files.", icon: MessageSquareText, tone: "orange" },
 ];
 
+
+function ChatStyleContent({ content }: { content: unknown }) {
+  const source = typeof content === "string" ? content.trim() : String(content ?? "");
+  if (!source) return null;
+  const lines = source.replace(/\\r\\n?/g, "\\n").split("\\n");
+  const inline = (text: string) => {
+    const parts = text.split(/(\\*\\*[^*]+\\*\\*|\\*[^*]+\\*|\x60[^\x60]+\x60)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) return <strong key={i}>{part.slice(2, -2)}</strong>;
+      if (part.startsWith("*") && part.endsWith("*")) return <em key={i}>{part.slice(1, -1)}</em>;
+      if (part.startsWith("`") && part.endsWith("`")) return <code key={i}>{part.slice(1, -1)}</code>;
+      return part;
+    });
+  };
+  const blocks: React.ReactNode[] = [];
+  let paragraph: string[] = [];
+  let list: { ordered: boolean; items: string[] } | null = null;
+  let table: string[][] = [];
+  const flushParagraph = () => { if (paragraph.length) { blocks.push(<p key={blocks.length}>{inline(paragraph.join(" "))}</p>); paragraph = []; } };
+  const flushList = () => { if (list) { const Tag = list.ordered ? "ol" : "ul"; blocks.push(<Tag key={blocks.length}>{list.items.map((item, i) => <li key={i}>{inline(item)}</li>)}</Tag>); list = null; } };
+  const flushTable = () => {
+    if (!table.length) return;
+    const rows = table.filter(row => !row.every(cell => /^:?-{3,}:?$/.test(cell.trim())));
+    if (rows.length) blocks.push(<div className="chat-result-table-wrap" key={blocks.length}><table className="chat-result-table"><thead><tr>{rows[0].map((cell, i) => <th key={i}>{inline(cell.trim())}</th>)}</tr></thead><tbody>{rows.slice(1).map((row, ri) => <tr key={ri}>{rows[0].map((_, ci) => <td key={ci}>{inline((row[ci] || "").trim())}</td>)}</tr>)}</tbody></table></div>);
+    table = [];
+  };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { flushParagraph(); flushList(); flushTable(); continue; }
+    if (line.includes("|") && line.split("|").length >= 3) {
+      flushParagraph(); flushList();
+      table.push(line.replace(/^\\|/,"").replace(/\\|$/,"").split("|"));
+      continue;
+    }
+    flushTable();
+    const heading = line.match(/^(#{1,4})\\s+(.+)$/);
+    if (heading) { flushParagraph(); flushList(); const level = heading[1].length; const text = heading[2]; const key = blocks.length; if (level === 1) blocks.push(<h2 key={key}>{inline(text)}</h2>); else if (level === 2) blocks.push(<h3 key={key}>{inline(text)}</h3>); else blocks.push(<h4 key={key}>{inline(text)}</h4>); continue; }
+    const item = line.match(/^\\s*(?:[-*+]\\s+|(\\d+)[.)]\\s+)(.+)$/);
+    if (item) { flushParagraph(); const ordered = Boolean(item[1]); if (list && list.ordered !== ordered) flushList(); if (!list) list = { ordered, items: [] }; list.items.push(item[2]); continue; }
+    if (line.startsWith(">")) { flushParagraph(); flushList(); blocks.push(<blockquote key={blocks.length}>{inline(line.replace(/^>\\s?/, ""))}</blockquote>); continue; }
+    paragraph.push(line);
+  }
+  flushParagraph(); flushList(); flushTable();
+  return <div className="chat-result-content">{blocks}</div>;
+}
+
 export default function Home() {
   const supabase = getSupabaseBrowserClient();
   const [user, setUser] = useState<User | null>(null);
@@ -386,8 +432,8 @@ export default function Home() {
                   {result.questionsToInvestigate?.length > 0 && <><h3>Questions to investigate</h3><ul>{result.questionsToInvestigate.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}
                   {result.limitations?.length > 0 && <><h3>Analysis limitations</h3><ul>{result.limitations.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}
                   {result.executiveSummary && <><h3>Executive summary</h3><p className="answer-text">{result.executiveSummary}</p></>}{result.documentPurpose && <><h3>Document purpose</h3><p className="answer-text">{result.documentPurpose}</p></>}{result.summary && <><h3>{result.analysisMode === "deep" ? "Detailed summary" : "Summary highlights"}</h3><ul>{result.summary.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul>{result.keyFindings?.length>0&&<><h3>Key findings</h3><ul>{result.keyFindings.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.evidence?.length>0&&<><h3>Evidence from the document</h3>{result.evidence.map((item:{claim:string;supportingText:string;caveat:string},i:number)=><article className="deep-evidence-card" key={i}><strong>{item.claim}</strong>{item.supportingText&&<blockquote>“{item.supportingText}”</blockquote>}{item.caveat&&<p>{item.caveat}</p>}</article>)}</>}{result.implications?.length>0&&<><h3>Implications</h3><ul>{result.implications.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.risks?.length>0&&<><h3>Risks and cautions</h3><ul>{result.risks.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.actionItems?.length>0&&<><h3>Suggested action items</h3><ul>{result.actionItems.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.questionsToInvestigate?.length>0&&<><h3>Questions to investigate</h3><ul>{result.questionsToInvestigate.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.limitations?.length>0&&<><h3>Limitations and missing information</h3><ul>{result.limitations.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{(result.dates?.length>0||result.amounts?.length>0)&&<div className="extracted-grid">{result.dates?.length>0&&<div><h3>Dates found</h3><p>{result.dates.join(" · ")}</p></div>}{result.amounts?.length>0&&<div><h3>Amounts / percentages</h3><p>{result.amounts.join(" · ")}</p></div>}</div>}</>}
-                  {result.answer && <p className="answer-text">{result.answer}</p>}
-                  {result.documents && <><div className="compare-stats"><div><small>Vocabulary overlap</small><strong>{result.overlap}%</strong></div>{result.documents.map((d:{name:string;pages:number;words:number})=><div key={d.name}><small>{d.name}</small><strong>{d.pages} pages · {d.words} terms</strong></div>)}</div>{result.overview && <><h3>AI comparison overview</h3><p className="answer-text">{result.overview}</p></>}{result.keyDifferences?.length>0&&<><h3>Key differences</h3><ul>{result.keyDifferences.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.sharedPoints?.length>0&&<><h3>Shared points</h3><ul>{result.sharedPoints.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.followUps?.length>0&&<><h3>Follow-up checks</h3><ul>{result.followUps.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}<div className="extracted-grid"><div><h3>Terms only in first PDF</h3><p>{result.uniqueToFirst?.join(", ") || "None found"}</p></div><div><h3>Terms only in second PDF</h3><p>{result.uniqueToSecond?.join(", ") || "None found"}</p></div></div><p className="result-meta">{result.note}</p></>}
+                  {result.answer && <ChatStyleContent content={result.answer} /> }
+                  {result.documents && <><div className="compare-stats"><div><small>Vocabulary overlap</small><strong>{result.overlap}%</strong></div>{result.documents.map((d:{name:string;pages:number;words:number})=><div key={d.name}><small>{d.name}</small><strong>{d.pages} pages · {d.words} terms</strong></div>)}</div>{result.overview && <><h3>AI comparison overview</h3><ChatStyleContent content={result.overview} /></>}{result.keyDifferences?.length>0&&<><h3>Key differences</h3><ul>{result.keyDifferences.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.sharedPoints?.length>0&&<><h3>Shared points</h3><ul>{result.sharedPoints.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.followUps?.length>0&&<><h3>Follow-up checks</h3><ul>{result.followUps.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}<div className="extracted-grid"><div><h3>Terms only in first PDF</h3><p>{result.uniqueToFirst?.join(", ") || "None found"}</p></div><div><h3>Terms only in second PDF</h3><p>{result.uniqueToSecond?.join(", ") || "None found"}</p></div></div><p className="result-meta">{result.note}</p></>}
                   {result.disclaimer && <p className="result-disclaimer">{result.disclaimer}</p>}
                 </div>}
                 <p className="privacy-note"><ShieldCheck size={14}/> PDFs are processed for this request and are not saved as files by this app. When AI is configured, extracted text is sent to the AI provider to generate results. History and saved insights are synced to your signed-in account; uploaded PDF files themselves are not stored.</p>
