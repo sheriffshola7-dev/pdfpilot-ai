@@ -384,3 +384,18 @@ html[data-theme="dark"] .chat-result-content blockquote{background:#203a2b;color
 html[data-theme="dark"] .chat-result-content code{background:#203a2b;color:#dcefe2}
 html[data-theme="dark"] .chat-result-table th{background:#203a2b;color:#e9f5ed}
 html[data-theme="dark"] .chat-result-table td{color:#dce9df}
+
+
+/* ChatGPT-style structured result typography, tables and readable long answers. */
+.chat-style-content{min-width:0;color:var(--ink);font-size:13px;line-height:1.85;overflow-wrap:anywhere}
+.chat-style-content p{margin:0 0 13px;white-space:normal;line-height:1.85}.chat-style-content p:last-child{margin-bottom:0}
+.chat-style-content h2,.chat-style-content h3,.chat-style-content h4{color:var(--ink);font-family:Manrope,sans-serif;font-weight:800;line-height:1.4;margin:20px 0 9px}
+.chat-style-content h2{font-size:19px}.chat-style-content h3{font-size:16px}.chat-style-content h4{font-size:13px}
+.chat-style-content ul,.chat-style-content ol{padding-left:23px;margin:8px 0 15px}.chat-style-content li{padding-left:3px;margin:5px 0;line-height:1.75}
+.chat-style-content blockquote{margin:12px 0;padding:11px 14px;border-left:3px solid var(--green);border-radius:0 8px 8px 0;background:var(--green-pale);color:var(--ink)}
+.chat-style-content code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;background:var(--green-pale);border:1px solid var(--line);border-radius:5px;padding:2px 5px;overflow-wrap:anywhere}
+.chat-result-table-wrap{width:100%;overflow-x:auto;margin:13px 0 17px;border:1px solid var(--line);border-radius:9px;-webkit-overflow-scrolling:touch}
+.chat-result-table{border-collapse:collapse;width:100%;min-width:420px;font-size:12px;line-height:1.6;background:var(--surface)}
+.chat-result-table th,.chat-result-table td{padding:10px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+.chat-result-table th{background:var(--green-pale);font-weight:800;color:var(--ink)}.chat-result-table tr:last-child td{border-bottom:0}.chat-result-table th:last-child,.chat-result-table td:last-child{border-right:0}
+html[data-theme="dark"] .chat-style-content{color:#e6f1e9}html[data-theme="dark"] .chat-style-content h2,html[data-theme="dark"] .chat-style-content h3,html[data-theme="dark"] .chat-style-content h4{color:#f0f7f2}html[data-theme="dark"] .chat-style-content blockquote{background:#203a2b;color:#e4f2e8}html[data-theme="dark"] .chat-style-content code{background:#203a2b;border-color:#385744;color:#e4f2e8}html[data-theme="dark"] .chat-result-table{background:#14231a;color:#e6f1e9}html[data-theme="dark"] .chat-result-table th{background:#203a2b;color:#f0f7f2}
