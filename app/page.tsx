@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { extractScannedPdfText } from "@/lib/ocr";
 import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, BookOpenText,
   Check, ChevronDown, CircleHelp, Clock3, FileCheck2, FileSearch, FileText,
@@ -17,6 +18,52 @@ const tools: { title: ToolKey; description: string; icon: typeof FileSearch; ton
   { title: "Chat with PDF", description: "Ask questions and get answers grounded in your files.", icon: MessageSquareText, tone: "orange" },
 ];
 
+
+function ChatStyleContent({ content }: { content: unknown }) {
+  const source = typeof content === "string" ? content.trim() : String(content ?? "");
+  if (!source) return null;
+  const lines = source.replace(/\\r\\n?/g, "\\n").split("\\n");
+  const inline = (text: string) => {
+    const parts = text.split(/(\\*\\*[^*]+\\*\\*|\\*[^*]+\\*|\x60[^\x60]+\x60)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) return <strong key={i}>{part.slice(2, -2)}</strong>;
+      if (part.startsWith("*") && part.endsWith("*")) return <em key={i}>{part.slice(1, -1)}</em>;
+      if (part.startsWith("`") && part.endsWith("`")) return <code key={i}>{part.slice(1, -1)}</code>;
+      return part;
+    });
+  };
+  const blocks: React.ReactNode[] = [];
+  let paragraph: string[] = [];
+  let list: { ordered: boolean; items: string[] } | null = null;
+  let table: string[][] = [];
+  const flushParagraph = () => { if (paragraph.length) { blocks.push(<p key={blocks.length}>{inline(paragraph.join(" "))}</p>); paragraph = []; } };
+  const flushList = () => { if (list) { const Tag = list.ordered ? "ol" : "ul"; blocks.push(<Tag key={blocks.length}>{list.items.map((item, i) => <li key={i}>{inline(item)}</li>)}</Tag>); list = null; } };
+  const flushTable = () => {
+    if (!table.length) return;
+    const rows = table.filter(row => !row.every(cell => /^:?-{3,}:?$/.test(cell.trim())));
+    if (rows.length) blocks.push(<div className="chat-result-table-wrap" key={blocks.length}><table className="chat-result-table"><thead><tr>{rows[0].map((cell, i) => <th key={i}>{inline(cell.trim())}</th>)}</tr></thead><tbody>{rows.slice(1).map((row, ri) => <tr key={ri}>{rows[0].map((_, ci) => <td key={ci}>{inline((row[ci] || "").trim())}</td>)}</tr>)}</tbody></table></div>);
+    table = [];
+  };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { flushParagraph(); flushList(); flushTable(); continue; }
+    if (line.includes("|") && line.split("|").length >= 3) {
+      flushParagraph(); flushList();
+      table.push(line.replace(/^\\|/,"").replace(/\\|$/,"").split("|"));
+      continue;
+    }
+    flushTable();
+    const heading = line.match(/^(#{1,4})\\s+(.+)$/);
+    if (heading) { flushParagraph(); flushList(); const level = heading[1].length; const text = heading[2]; const key = blocks.length; if (level === 1) blocks.push(<h2 key={key}>{inline(text)}</h2>); else if (level === 2) blocks.push(<h3 key={key}>{inline(text)}</h3>); else blocks.push(<h4 key={key}>{inline(text)}</h4>); continue; }
+    const item = line.match(/^\\s*(?:[-*+]\\s+|(\\d+)[.)]\\s+)(.+)$/);
+    if (item) { flushParagraph(); const ordered = Boolean(item[1]); if (list && list.ordered !== ordered) flushList(); if (!list) list = { ordered, items: [] }; list.items.push(item[2]); continue; }
+    if (line.startsWith(">")) { flushParagraph(); flushList(); blocks.push(<blockquote key={blocks.length}>{inline(line.replace(/^>\\s?/, ""))}</blockquote>); continue; }
+    paragraph.push(line);
+  }
+  flushParagraph(); flushList(); flushTable();
+  return <div className="chat-result-content">{blocks}</div>;
+}
+
 export default function Home() {
   const supabase = getSupabaseBrowserClient();
   const [user, setUser] = useState<User | null>(null);
@@ -29,6 +76,7 @@ export default function Home() {
   const [authMessage, setAuthMessage] = useState("");
   const [active, setActive] = useState("Overview");
   const [workspaceRestored, setWorkspaceRestored] = useState(false);
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   useEffect(() => {
     let saved: string | null = null;
@@ -54,8 +102,11 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [chatQuestion, setChatQuestion] = useState("");
   const [notice, setNotice] = useState("");
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [analysisMode, setAnalysisMode] = useState<"summary" | "deep">("summary");
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<Record<string, any> | null>(null);
+  const [resultExpanded, setResultExpanded] = useState(false);
   const [history, setHistory] = useState<Record<string, any>[]>([]);
   const [savedInsights, setSavedInsights] = useState<Record<string, any>[]>([]);
   useEffect(() => {
@@ -210,6 +261,15 @@ export default function Home() {
     setChatQuestion("");
     setActive(next);
   }
+  function resetCurrentPdfTool() {
+    setFiles([]);
+    setResult(null);
+    setNotice("");
+    setChatQuestion("");
+    setProcessing(false);
+    setAnalysisMode("summary");
+  }
+
   async function runProcess() {
     if (tool === "Chat with PDF" && !chatQuestion.trim()) { setNotice("Enter a question about your PDF first."); return; }
     if (!files.length || (tool === "Compare documents" && files.length < 2)) return;
@@ -220,17 +280,47 @@ export default function Home() {
         form.append("action", "compare"); form.append("file1", files[0]); form.append("file2", files[1]);
       } else {
         form.append("action", tool === "Chat with PDF" ? "chat" : "analyze"); form.append("file", files[0]);
+        if (tool === "Analyze PDF") form.append("analysisMode", analysisMode);
         if (tool === "Chat with PDF") form.append("question", chatQuestion);
       }
-      const response = await fetch("/api/process", { method: "POST", body: form, signal: AbortSignal.timeout(35000) });
-      const contentType = response.headers.get("content-type") || "";
+      let response = await fetch("/api/process", { method: "POST", body: form, signal: AbortSignal.timeout(35000) });
+      let contentType = response.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
         throw new Error(response.ok
           ? "The server returned an unexpected response. Please try again."
           : "The PDF service is temporarily unavailable. Please try again shortly.");
       }
-      const data = await response.json();
+      let data = await response.json();
+      const scannedPdfNeedsOcr = !response.ok && /browser OCR is needed|No selectable text was found/i.test(String(data.error || ""));
+      if (scannedPdfNeedsOcr) {
+        setNotice("Scanned PDF detected. Loading OCR tools and recognizing text in your browser…");
+        if (tool === "Compare documents") {
+          const [firstOcr, secondOcr] = await Promise.all([
+            extractScannedPdfText(files[0], p => setNotice(`OCR document 1: ${p.phase} (${p.percent}%)`)),
+            extractScannedPdfText(files[1], p => setNotice(`OCR document 2: ${p.phase} (${p.percent}%)`)),
+          ]);
+          form.append("ocrText1", firstOcr.text);
+          form.append("ocrText2", secondOcr.text);
+        } else {
+          const ocr = await extractScannedPdfText(files[0], p => setNotice(`OCR: ${p.phase} (${p.percent}%)`));
+          form.append("ocrText", ocr.text);
+        }
+        setNotice("OCR finished. Processing the recognized text…");
+        response = await fetch("/api/process", { method: "POST", body: form, signal: AbortSignal.timeout(35000) });
+        contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(response.ok
+            ? "The server returned an unexpected response. Please try again."
+            : "The PDF service is temporarily unavailable. Please try again shortly.");
+        }
+        data = await response.json();
+      }
       if (!response.ok) throw new Error(data.error || "Processing failed.");
+      if (scannedPdfNeedsOcr) {
+        data.ocrUsed = true;
+        data.ocrNote = "Text was recognized locally in your browser. OCR currently processes the first 8 pages in English; review the original PDF for important details.";
+        if (typeof data.disclaimer === "string") data.disclaimer += " OCR may misread scanned text; verify important details against the original.";
+      }
       setResult(data);
       saveResultToHistory(data, tool as ToolKey);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not process this PDF. Please try again."); }
@@ -287,7 +377,13 @@ export default function Home() {
           <div><div className="brand-name">PDFPilot <span>AI</span></div><div className="brand-by">BY SHORLAH CLOUD</div></div>
           <button className="icon-button mobile-close" onClick={() => setMobileMenu(false)} aria-label="Close menu"><X size={19}/></button>
         </div>
-        <button className="workspace-switch"><div className="workspace-icon">S</div><div className="workspace-copy"><strong>Personal workspace</strong><small>Free plan</small></div><ChevronDown size={16}/></button>
+        <button className={workspaceMenuOpen ? "workspace-switch workspace-switch-open" : "workspace-switch"} onClick={() => setWorkspaceMenuOpen(open => !open)} aria-expanded={workspaceMenuOpen} aria-label="Open workspace menu"><div className="workspace-icon">S</div><div className="workspace-copy"><strong>Personal workspace</strong><small>Free plan</small></div><ChevronDown size={16}/></button>
+        {workspaceMenuOpen && <div className="workspace-menu">
+          <div className="workspace-menu-heading"><strong>Personal workspace</strong><span>Free plan</span></div>
+          <p>Your current workspace for PDF analysis and saved insights.</p>
+          <div className="workspace-menu-usage"><span>Processed items</span><strong>{history.length}</strong></div>
+          <button onClick={() => { setActive("Settings"); setTool(null); setWorkspaceMenuOpen(false); setMobileMenu(false); }}>Workspace settings <ArrowRight size={15}/></button>
+        </div>}
         <div className="nav-caption">WORKSPACE</div>
         <nav className="main-nav">
           {navItems.map(({label, icon: Icon}) => <button key={label} className={`nav-item ${active === label ? "nav-active" : ""}`} onClick={() => { setMobileMenu(false); if (label === "Analyze PDF" || label === "Compare documents" || label === "Chat with PDF") selectTool(label as ToolKey); else { setActive(label); setTool(null); } }}><Icon size={18}/><span>{label}</span>{label === "My documents" && <span className="nav-count">{history.length}</span>}</button>)}
@@ -308,7 +404,7 @@ export default function Home() {
         <header className="topbar">
           <button className="icon-button mobile-menu-button" onClick={() => setMobileMenu(true)} aria-label="Open menu"><Menu size={20}/></button>
           <div className="breadcrumbs">Workspace <span>/</span> <strong>{tool ?? active}</strong></div>
-          <div className="top-actions"><label className="search-box" title="Search your document history"><Search size={16}/><input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { setActive("My documents"); setTool(null); setMobileMenu(false); } if (e.key === "Escape") setQuery(""); }} placeholder="Search documents..." aria-label="Search documents, tools and saved insights" /><kbd>Enter ↵</kbd></label><button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>{theme === "dark" ? <Sun size={18}/> : <Moon size={18}/>}</button><button className="icon-button notification-button" aria-label="Notifications" onClick={() => setNotice("You're all caught up.")}><Bell size={18}/><i/></button><button className="top-avatar auth-top-avatar" title="Sign out" onClick={handleLogout}>{(user.user_metadata?.display_name || user.email || "U").slice(0,2).toUpperCase()}</button></div>
+          <div className="top-actions"><label className="search-box" title="Search your document history"><Search size={16}/><input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { setActive("My documents"); setTool(null); setMobileMenu(false); } if (e.key === "Escape") setQuery(""); }} placeholder="Search documents..." aria-label="Search documents, tools and saved insights" /><kbd>Enter ↵</kbd></label><button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>{theme === "dark" ? <Sun size={18}/> : <Moon size={18}/>}</button><div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen(open => !open)}><Bell size={18}/>{(history.length || savedInsights.length) > 0 && <i/>}</button>{notificationsOpen && <div className="notification-popover" role="dialog" aria-label="Recent activity"><div className="notification-popover-head"><strong>Recent activity</strong><button className="icon-button" onClick={() => setNotificationsOpen(false)} aria-label="Close notifications"><X size={15}/></button></div>{history.slice(0,4).map((item:any)=><button className="notification-entry" key={item.id} onClick={() => {setResult(item.result);setTool(item.tool);setActive(item.tool);setNotificationsOpen(false);}}><FileText size={16}/><span><strong>{item.title || item.tool}</strong><small>{item.tool} · {new Date(item.createdAt).toLocaleString()}</small></span></button>)}{savedInsights.slice(0,2).map((item:any)=><button className="notification-entry" key={"insight-"+item.id} onClick={() => {setActive("Saved insights");setTool(null);setNotificationsOpen(false);}}><Sparkles size={16}/><span><strong>Saved insight: {item.title}</strong><small>{new Date(item.createdAt).toLocaleString()}</small></span></button>)}{history.length===0&&savedInsights.length===0&&<p className="notification-empty">No activity yet. Your recent PDF analyses and saved insights will appear here.</p>}<button className="notification-view-all" onClick={() => {setActive("Activity");setTool(null);setNotificationsOpen(false);}}>View activity <ArrowRight size={14}/></button></div>}</div><button className="top-avatar auth-top-avatar" title="Sign out" onClick={handleLogout}>{(user.user_metadata?.display_name || user.email || "U").slice(0,2).toUpperCase()}</button></div>
         </header>
 
         <div className="page-content">
@@ -323,19 +419,26 @@ export default function Home() {
                 <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple={tool === "Compare documents"} hidden onChange={(e) => onFiles(e.target.files)}/>
                 {files.length > 0 && <div className="selected-files">{files.map((f,i)=><div className="selected-file" key={f.name+i}><FileText size={18}/><div><strong>{f.name}</strong><small>{(f.size/1024/1024).toFixed(2)} MB</small></div><button className="icon-button" onClick={() => setFiles(files.filter((_,j)=>j!==i))} aria-label="Remove file"><X size={16}/></button></div>)}</div>}
                 {notice && <p className="inline-warning">{notice}</p>}
+                {tool === "Analyze PDF" && <fieldset className="analysis-mode-field"><legend>Choose your analysis depth</legend><div className="analysis-mode-options"><label className={analysisMode === "summary" ? "analysis-mode-option selected" : "analysis-mode-option"}><input type="radio" name="analysisMode" value="summary" checked={analysisMode === "summary"} onChange={() => setAnalysisMode("summary")}/><span><strong>Quick summary</strong><small>Key points and takeaways at a glance.</small></span></label><label className={analysisMode === "deep" ? "analysis-mode-option selected" : "analysis-mode-option"}><input type="radio" name="analysisMode" value="deep" checked={analysisMode === "deep"} onChange={() => setAnalysisMode("deep")}/><span><strong>In-depth analysis</strong><small>Detailed breakdown, evidence, risks, implications, and action items.</small></span></label></div></fieldset>}
                 {tool === "Chat with PDF" && files.length > 0 && <label className="question-field"><span>What would you like to know?</span><textarea value={chatQuestion} onChange={(e) => setChatQuestion(e.target.value)} placeholder="Ask a question using terms from your document..." rows={3}/></label>}
                 <button className="primary-button analyze-button" disabled={processing || files.length < (tool === "Compare documents" ? 2 : 1) || (tool === "Chat with PDF" && !chatQuestion.trim())} onClick={runProcess}>{processing ? "Processing PDF..." : tool === "Compare documents" ? "Compare documents" : tool === "Chat with PDF" ? "Ask question" : "Analyze document"} {!processing && <ArrowRight size={17}/>}</button>
-                {result && <div className="result-panel">
-                  <div className="result-heading"><div><span className="result-kicker"><Sparkles size={13}/> {result.aiEnabled ? "AI-ASSISTED RESULT" : "PROCESSING RESULT"}</span><h2>{tool === "Compare documents" ? "Document comparison" : tool === "Chat with PDF" ? "Answer from your PDF" : "Document insights"}</h2></div><div className="result-export-actions"><button className="text-button" onClick={saveInsight}>Save insight</button><button className="text-button" onClick={() => {const blob=new Blob([JSON.stringify(result,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="pdfpilot-result.json";a.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000)}}>JSON ↓</button><button className="text-button" onClick={() => {const lines:string[]=["# PDFPilot AI report","",`Generated from: ${result.document?.name || result.documents?.map((d:{name:string})=>d.name).join(" and ") || "PDF documents"}`,""];if(result.summary)lines.push("## Summary",...result.summary.map((x:string)=>"- "+x),"");if(result.keyFindings?.length)lines.push("## Key findings",...result.keyFindings.map((x:string)=>"- "+x),"");if(result.risks?.length)lines.push("## Risks and cautions",...result.risks.map((x:string)=>"- "+x),"");if(result.actionItems?.length)lines.push("## Action items",...result.actionItems.map((x:string)=>"- "+x),"");if(result.answer)lines.push("## Answer",result.answer,"");if(result.overview)lines.push("## Comparison overview",result.overview,"");if(result.keyDifferences?.length)lines.push("## Key differences",...result.keyDifferences.map((x:string)=>"- "+x),"");if(result.sharedPoints?.length)lines.push("## Shared points",...result.sharedPoints.map((x:string)=>"- "+x),"");if(result.followUps?.length)lines.push("## Follow-up checks",...result.followUps.map((x:string)=>"- "+x),"");if(result.sharedTerms?.length)lines.push("## Shared content terms",result.sharedTerms.join(", "),"");if(result.uniqueToFirst?.length)lines.push("## Terms only in first PDF",result.uniqueToFirst.join(", "),"");if(result.uniqueToSecond?.length)lines.push("## Terms only in second PDF",result.uniqueToSecond.join(", "),"");if(result.matches!==undefined)lines.push("## Retrieved matching passages",String(result.matches),"");if(result.dates?.length)lines.push("## Dates",result.dates.join(", "),"");if(result.amounts?.length)lines.push("## Amounts and percentages",result.amounts.join(", "),"");lines.push("## Notes",String(result.disclaimer || result.note || "Review this output against the source PDF."));const blob=new Blob([lines.join("\n")],{type:"text/markdown;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="pdfpilot-report.md";a.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000)}}>Report ↓</button></div></div>
+                {result && <div className={`result-panel${resultExpanded ? " result-panel-expanded" : ""}`} data-analysis-depth={result.analysisMode === "deep" ? "deep" : "standard"}>
+                  <div className="result-heading"><div><span className="result-kicker"><Sparkles size={13}/> {result.aiEnabled ? "AI-ASSISTED RESULT" : "PROCESSING RESULT"}</span><h2>{tool === "Compare documents" ? "Document comparison" : tool === "Chat with PDF" ? "Answer from your PDF" : "Document insights"}</h2></div><div className="result-export-actions"><button className="text-button refresh-result-button" onClick={resetCurrentPdfTool} title="Clear this result and choose another PDF"><span aria-hidden="true">↻</span> New PDF</button><button className={`text-button expand-result-button${resultExpanded ? " close-expanded-report" : ""}`} onClick={() => setResultExpanded(value => !value)} aria-expanded={resultExpanded} aria-label={resultExpanded ? "Close expanded report" : "Expand report"} title={resultExpanded ? "Close report view" : "Expand report"}>{resultExpanded ? <><X size={17}/> Close</> : "Expand report"}</button><button className="text-button" onClick={saveInsight}>Save insight</button><button className="text-button" onClick={() => {const blob=new Blob([JSON.stringify(result,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="pdfpilot-result.json";a.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000)}}>JSON ↓</button><button className="text-button" onClick={() => {const lines:string[]=["# PDFPilot AI report","",`Generated from: ${result.document?.name || result.documents?.map((d:{name:string})=>d.name).join(" and ") || "PDF documents"}`,""];if(result.executiveSummary)lines.push("## Executive summary",result.executiveSummary,"");if(result.documentPurpose)lines.push("## Document purpose",result.documentPurpose,"");if(result.summary)lines.push("## Summary",...result.summary.map((x:string)=>"- "+x),"");if(result.keyFindings?.length)lines.push("## Key findings",...result.keyFindings.map((x:string)=>"- "+x),"");if(result.risks?.length)lines.push("## Risks and cautions",...result.risks.map((x:string)=>"- "+x),"");if(result.actionItems?.length)lines.push("## Action items",...result.actionItems.map((x:string)=>"- "+x),"");if(result.implications?.length)lines.push("## Implications",...result.implications.map((x:string)=>"- "+x),"");if(result.questionsToInvestigate?.length)lines.push("## Questions to investigate",...result.questionsToInvestigate.map((x:string)=>"- "+x),"");if(result.limitations?.length)lines.push("## Limitations",...result.limitations.map((x:string)=>"- "+x),"");if(result.evidence?.length)lines.push("## Evidence",...result.evidence.map((x:any)=>"- "+x.claim+"\n  Supporting text: "+x.supportingText+"\n  Caveat: "+x.caveat),"");if(result.answer)lines.push("## Answer",result.answer,"");if(result.overview)lines.push("## Comparison overview",result.overview,"");if(result.keyDifferences?.length)lines.push("## Key differences",...result.keyDifferences.map((x:string)=>"- "+x),"");if(result.sharedPoints?.length)lines.push("## Shared points",...result.sharedPoints.map((x:string)=>"- "+x),"");if(result.followUps?.length)lines.push("## Follow-up checks",...result.followUps.map((x:string)=>"- "+x),"");if(result.sharedTerms?.length)lines.push("## Shared content terms",result.sharedTerms.join(", "),"");if(result.uniqueToFirst?.length)lines.push("## Terms only in first PDF",result.uniqueToFirst.join(", "),"");if(result.uniqueToSecond?.length)lines.push("## Terms only in second PDF",result.uniqueToSecond.join(", "),"");if(result.matches!==undefined)lines.push("## Retrieved matching passages",String(result.matches),"");if(result.dates?.length)lines.push("## Dates",result.dates.join(", "),"");if(result.amounts?.length)lines.push("## Amounts and percentages",result.amounts.join(", "),"");lines.push("## Notes",String(result.disclaimer || result.note || "Review this output against the source PDF."));const blob=new Blob([lines.join("\n")],{type:"text/markdown;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="pdfpilot-report.md";a.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000)}}>Report ↓</button></div></div>
                   {result.document && <p className="result-meta">{result.document.name}{result.document.pages ? " · "+result.document.pages+" pages" : ""}{result.wordCount ? " · "+result.wordCount.toLocaleString()+" words" : ""}</p>}{result.truncated && <p className="notice" role="status">One or more PDFs exceed the current text-processing window. Results may omit later content, so verify important findings against the complete original document.</p>}
-                  {result.summary && <><h3>Summary highlights</h3><ul>{result.summary.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul>{result.keyFindings?.length>0&&<><h3>Key findings</h3><ul>{result.keyFindings.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.risks?.length>0&&<><h3>Risks and cautions</h3><ul>{result.risks.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.actionItems?.length>0&&<><h3>Suggested action items</h3><ul>{result.actionItems.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{(result.dates?.length>0||result.amounts?.length>0)&&<div className="extracted-grid">{result.dates?.length>0&&<div><h3>Dates found</h3><p>{result.dates.join(" · ")}</p></div>}{result.amounts?.length>0&&<div><h3>Amounts / percentages</h3><p>{result.amounts.join(" · ")}</p></div>}</div>}</>}
-                  {result.answer && <p className="answer-text">{result.answer}</p>}
-                  {result.documents && <><div className="compare-stats"><div><small>Vocabulary overlap</small><strong>{result.overlap}%</strong></div>{result.documents.map((d:{name:string;pages:number;words:number})=><div key={d.name}><small>{d.name}</small><strong>{d.pages} pages · {d.words} terms</strong></div>)}</div>{result.overview && <><h3>AI comparison overview</h3><p className="answer-text">{result.overview}</p></>}{result.keyDifferences?.length>0&&<><h3>Key differences</h3><ul>{result.keyDifferences.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.sharedPoints?.length>0&&<><h3>Shared points</h3><ul>{result.sharedPoints.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.followUps?.length>0&&<><h3>Follow-up checks</h3><ul>{result.followUps.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}<div className="extracted-grid"><div><h3>Terms only in first PDF</h3><p>{result.uniqueToFirst?.join(", ") || "None found"}</p></div><div><h3>Terms only in second PDF</h3><p>{result.uniqueToSecond?.join(", ") || "None found"}</p></div></div><p className="result-meta">{result.note}</p></>}
+                  {result.executiveSummary && <><h3>Executive summary</h3><p className="analysis-prose">{result.executiveSummary}</p></>}
+                  {result.documentPurpose && <><h3>Document purpose</h3><p className="analysis-prose">{result.documentPurpose}</p></>}
+                  {result.evidence?.length > 0 && <><h3>Evidence and supporting excerpts</h3><div className="evidence-list">{result.evidence.map((item:any,i:number)=><article className="evidence-item" key={i}><strong>{item.claim}</strong>{item.supportingText && <blockquote>{item.supportingText}</blockquote>}{item.caveat && <p>{item.caveat}</p>}</article>)}</div></>}
+                  {result.implications?.length > 0 && <><h3>Implications</h3><ul>{result.implications.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}
+                  {result.questionsToInvestigate?.length > 0 && <><h3>Questions to investigate</h3><ul>{result.questionsToInvestigate.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}
+                  {result.limitations?.length > 0 && <><h3>Analysis limitations</h3><ul>{result.limitations.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}
+                  {result.executiveSummary && <><h3>Executive summary</h3><p className="answer-text">{result.executiveSummary}</p></>}{result.documentPurpose && <><h3>Document purpose</h3><p className="answer-text">{result.documentPurpose}</p></>}{result.summary && <><h3>{result.analysisMode === "deep" ? "Detailed summary" : "Summary highlights"}</h3><ul>{result.summary.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul>{result.keyFindings?.length>0&&<><h3>Key findings</h3><ul>{result.keyFindings.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.evidence?.length>0&&<><h3>Evidence from the document</h3>{result.evidence.map((item:{claim:string;supportingText:string;caveat:string},i:number)=><article className="deep-evidence-card" key={i}><strong>{item.claim}</strong>{item.supportingText&&<blockquote>“{item.supportingText}”</blockquote>}{item.caveat&&<p>{item.caveat}</p>}</article>)}</>}{result.implications?.length>0&&<><h3>Implications</h3><ul>{result.implications.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.risks?.length>0&&<><h3>Risks and cautions</h3><ul>{result.risks.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.actionItems?.length>0&&<><h3>Suggested action items</h3><ul>{result.actionItems.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.questionsToInvestigate?.length>0&&<><h3>Questions to investigate</h3><ul>{result.questionsToInvestigate.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.limitations?.length>0&&<><h3>Limitations and missing information</h3><ul>{result.limitations.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{(result.dates?.length>0||result.amounts?.length>0)&&<div className="extracted-grid">{result.dates?.length>0&&<div><h3>Dates found</h3><p>{result.dates.join(" · ")}</p></div>}{result.amounts?.length>0&&<div><h3>Amounts / percentages</h3><p>{result.amounts.join(" · ")}</p></div>}</div>}</>}
+                  {result.answer && <ChatStyleContent content={result.answer} /> }
+                  {result.documents && <><div className="compare-stats"><div><small>Vocabulary overlap</small><strong>{result.overlap}%</strong></div>{result.documents.map((d:{name:string;pages:number;words:number})=><div key={d.name}><small>{d.name}</small><strong>{d.pages} pages · {d.words} terms</strong></div>)}</div>{result.overview && <><h3>AI comparison overview</h3><ChatStyleContent content={result.overview} /></>}{result.keyDifferences?.length>0&&<><h3>Key differences</h3><ul>{result.keyDifferences.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.sharedPoints?.length>0&&<><h3>Shared points</h3><ul>{result.sharedPoints.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}{result.followUps?.length>0&&<><h3>Follow-up checks</h3><ul>{result.followUps.map((line:string,i:number)=><li key={i}>{line}</li>)}</ul></>}<div className="extracted-grid"><div><h3>Terms only in first PDF</h3><p>{result.uniqueToFirst?.join(", ") || "None found"}</p></div><div><h3>Terms only in second PDF</h3><p>{result.uniqueToSecond?.join(", ") || "None found"}</p></div></div><p className="result-meta">{result.note}</p></>}
                   {result.disclaimer && <p className="result-disclaimer">{result.disclaimer}</p>}
                 </div>}
                 <p className="privacy-note"><ShieldCheck size={14}/> PDFs are processed for this request and are not saved as files by this app. When AI is configured, extracted text is sent to the AI provider to generate results. History and saved insights are synced to your signed-in account; uploaded PDF files themselves are not stored.</p>
               </div>
-              <div className="below-upload"><div><Sparkles size={18}/><strong>What you&apos;ll get</strong></div><p>{tool === "Compare documents" ? "A comparison of extracted content words, plus AI-assisted differences and shared points when server-side AI is configured. Always verify against the original PDFs." : tool === "Chat with PDF" ? "Answers grounded in extracted document text. Page-level citations are not available yet, so check important answers against the original PDF." : "An extractive summary, key findings, detected dates and amounts, and AI-assisted risks or action items when server-side AI is configured."}</p></div>
+              <div className="below-upload"><div><Sparkles size={18}/><strong>What you&apos;ll get</strong></div><p>{tool === "Compare documents" ? "A comparison of extracted content words, plus AI-assisted differences and shared points when server-side AI is configured. Always verify against the original PDFs." : tool === "Chat with PDF" ? "Answers grounded in extracted document text. Page-level citations are not available yet, so check important answers against the original PDF." : "Choose a quick summary or an in-depth analysis with key findings, evidence, risks, implications, and action items. In-depth AI analysis requires a server-side AI provider to be configured."}</p></div>
             </section>
           ) : active === "Overview" ? (
             <>
@@ -373,7 +476,7 @@ export default function Home() {
               <p className="settings-intro">Quick answers for analyzing, comparing, and asking questions about PDFs.</p>
               <div className="help-grid">
                 <article className="help-card"><h2>How do I analyze a PDF?</h2><p>Choose Analyze PDF, select a text-based PDF up to 20 MB, then select Analyze document. If no AI provider key is configured, PDFPilot uses built-in extractive analysis.</p></article>
-                <article className="help-card"><h2>Why is my scanned PDF not working?</h2><p>Scanned pages are images, so text extraction cannot read them yet. OCR is not available in this build. For now, upload a PDF where you can select and copy the text; do not rely on a blank result from a scanned file.</p></article>
+                <article className="help-card"><h2>Why is my scanned PDF not working?</h2><p>Scanned pages are processed with browser-based English OCR when selectable text is missing. OCR runs locally in your browser and currently reads up to the first 8 pages. It can take longer on phones, may need an internet connection to load OCR resources, and can misread low-quality scans; verify important details against the original PDF.</p></article>
                 <article className="help-card"><h2>How does Chat with PDF work?</h2><p>Upload a PDF, enter a question using words from the document, and choose Ask question. Without an AI key, answers use keyword-based passage retrieval and may be incomplete.</p></article>
                 <article className="help-card"><h2>How do I compare two PDFs?</h2><p>Choose Compare documents and add two PDFs. Without AI, results show shared and unique terms; overlap is vocabulary overlap, not semantic similarity.</p></article>
                 <article className="help-card"><h2>Will uploaded files remain after refresh?</h2><p>Uploaded PDF files are not saved in the browser workspace. Choose files again after refresh. Your current section, search, and completed result are restored on this device.</p></article>
