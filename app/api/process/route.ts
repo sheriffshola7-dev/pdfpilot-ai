@@ -8,27 +8,44 @@ const MAX_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT_CHARS = 120_000;
 const MAX_QUESTION_CHARS = 1_500;
 
-async function readPdf(file: File, ocrText = "") {
-  if (!file || file.size === 0) throw new Error("Please select a non-empty PDF.");
-  if (file.size > MAX_BYTES) throw new Error("Each PDF must be 20 MB or smaller.");
-  if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
-    throw new Error("Only PDF files are supported.");
-  }
-  const buffer = Buffer.from(await file.arrayBuffer());
-  let parsed: { text?: string; numpages?: number };
+async function readDocument(file: File, ocrText = "") {
+  if (!file || file.size === 0) throw new Error("Please select a non-empty document.");
+  if (file.size > MAX_BYTES) throw new Error("Each document must be 20 MB or smaller.");
+  const name = file.name.toLowerCase();
+  const ext = name.includes(".") ? name.split(".").pop() : "";
+  const allowed = ["pdf", "docx", "txt", "md", "markdown", "csv", "xlsx"];
+  if (!ext || !allowed.includes(ext)) throw new Error("Unsupported format. Supported formats: PDF, DOCX, TXT, Markdown, CSV, and XLSX.");
+  let text = "";
+  let pages = 0;
   try {
-    parsed = await pdfParse(buffer);
-  } catch {
-    throw new Error("This PDF could not be read. It may be damaged, password-protected, or not a valid PDF.");
+    if (ext === "pdf") {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      let parsed: { text?: string; numpages?: number };
+      try { parsed = await pdfParse(buffer); }
+      catch { throw new Error("This PDF could not be read. It may be damaged, password-protected, or invalid."); }
+      text = (parsed.text || "").trim();
+      pages = parsed.numpages || 0;
+      if (!text && ocrText.trim()) text = ocrText.slice(0, MAX_TEXT_CHARS);
+      if (!text) throw new Error("No selectable text was found. This may be a scanned PDF; browser OCR is needed.");
+    } else if (ext === "docx") {
+      const mammoth = await import("mammoth");
+      const parsed = await mammoth.extractRawText({ buffer: Buffer.from(await file.arrayBuffer()) });
+      text = parsed.value || "";
+    } else if (ext === "xlsx") {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(Buffer.from(await file.arrayBuffer()), { type: "buffer", cellDates: true });
+      text = workbook.SheetNames.map(sheetName => "Sheet: " + sheetName + "\n" + XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName])).join("\n\n");
+    } else {
+      text = Buffer.from(await file.arrayBuffer()).toString("utf8");
+      if (ext === "csv") text = text.replace(/\r\n?/g, "\n");
+    }
+  } catch (error) {
+    if (error instanceof Error && /PDF|document|Unsupported format|20 MB|empty|OCR/i.test(error.message)) throw error;
+    throw new Error("This document could not be read. Check that it is not damaged or password-protected.");
   }
-  const text = (parsed.text || "").replace(/[\t ]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-  if (!text) {
-    // Treat browser-provided OCR as untrusted input and bound work before normalization.
-    const recognized = ocrText.slice(0, MAX_TEXT_CHARS + 1).replace(/\s+/g, " ").trim();
-    if (recognized) return { name: file.name, pages: parsed.numpages || 0, text: recognized.slice(0, MAX_TEXT_CHARS), truncated: recognized.length > MAX_TEXT_CHARS };
-    throw new Error("No selectable text was found. This may be a scanned PDF; browser OCR is needed.");
-  }
-  return { name: file.name, pages: parsed.numpages || 0, text: text.slice(0, MAX_TEXT_CHARS), truncated: text.length > MAX_TEXT_CHARS };
+  text = text.replace(/[\t ]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  if (!text) throw new Error("No readable text was found in this document.");
+  return { name: file.name, pages, text: text.slice(0, MAX_TEXT_CHARS), truncated: text.length > MAX_TEXT_CHARS };
 }
 
 /**
@@ -146,8 +163,8 @@ export async function POST(request: Request) {
     if (action === "compare") {
       const first = form.get("file1");
       const second = form.get("file2");
-      if (!(first instanceof File) || !(second instanceof File)) return NextResponse.json({ error: "Choose two PDFs to compare." }, { status: 400 });
-      const [a,b] = await Promise.all([readPdf(first, String(form.get("ocrText1") || "")), readPdf(second, String(form.get("ocrText2") || ""))]);
+      if (!(first instanceof File) || !(second instanceof File)) return NextResponse.json({ error: "Choose two supported documents to compare." }, { status: 400 });
+      const [a,b] = await Promise.all([readDocument(first, String(form.get("ocrText1") || "")), readDocument(second, String(form.get("ocrText2") || ""))]);
       const aWords = new Set(contentTerms(a.text));
       const bWords = new Set(contentTerms(b.text));
       const common = [...aWords].filter(w=>bWords.has(w)).sort();
@@ -163,8 +180,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ action, documents:[{name:a.name,pages:a.pages,words:aWords.size,truncated:a.truncated},{name:b.name,pages:b.pages,words:bWords.size,truncated:b.truncated}], overlap, sharedTerms:common.slice(0,40), uniqueToFirst:onlyA, uniqueToSecond:onlyB, ...(semantic ? { overview: typeof semantic.overview === "string" ? semantic.overview.slice(0,3000) : "", keyDifferences: stringList(semantic.keyDifferences, 8), sharedPoints: stringList(semantic.sharedPoints, 8), followUps: stringList(semantic.followUps, 8) } : {}), aiEnabled:Boolean(semantic), truncated:Boolean(a.truncated || b.truncated), note:semantic ? "AI-assisted comparison of extracted text. Vocabulary overlap is based on distinct content words, not a legal or semantic similarity score. Verify important differences against the original PDFs." : "Content-word overlap only; this is not a semantic similarity score. Configure AI_API_KEY and optionally AI_BASE_URL and AI_MODEL on the server to enable AI-assisted comparison." });
     }
     const file = form.get("file");
-    if (!(file instanceof File)) return NextResponse.json({ error: "Choose a PDF first." }, { status: 400 });
-    const doc = await readPdf(file, String(form.get("ocrText") || ""));
+    if (!(file instanceof File)) return NextResponse.json({ error: "Choose a supported document first." }, { status: 400 });
+    const doc = await readDocument(file, String(form.get("ocrText") || ""));
     if (action === "chat") {
       const question = String(form.get("question") || "").trim();
       if (!question) return NextResponse.json({ error: "Enter a question about the PDF." }, { status: 400 });
