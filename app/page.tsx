@@ -330,7 +330,8 @@ export default function Home() {
   function onFiles(list: FileList | null) {
     if (!list) return;
     const picked = Array.from(list);
-    const supported = /\\.(pdf|docx|txt|md|markdown|csv|xlsx)$/i;\n    const invalid = picked.find((f) => !supported.test(f.name));
+    const supported = /\.(pdf|docx|txt|md|markdown|csv|xlsx)$/i;
+    const invalid = picked.find((f) => !supported.test(f.name));
     if (invalid) { setNotice(`${invalid.name} is not a supported format. Choose PDF, DOCX, TXT, Markdown, CSV, or XLSX.`); return; }
     const oversized = picked.find((f) => f.size > 20 * 1024 * 1024);
     if (oversized) { setNotice(`${oversized.name} is larger than 20 MB. Choose a smaller PDF.`); return; }
